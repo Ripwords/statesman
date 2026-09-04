@@ -14,14 +14,17 @@ Requires Node 24, pnpm, Docker, and Terraform or OpenTofu.
 ```bash
 cp .env.example .env && pnpm install   # 1. dependencies and a local config
 pnpm gen:key                           # 2. paste into STATESMAN_ENCRYPTION_KEY in .env
-pnpm setup && pnpm dev                 # 3. postgres + minio, migrate, seed, run
+pnpm dev:setup && pnpm dev             # 3. postgres + minio, migrate, seed, run
 ```
 
 Step 2 needs one more value: `BETTER_AUTH_SECRET`, any 32+ characters —
 `openssl rand -base64 32`. The app refuses to start without either of them, and
 says which one is missing.
 
-`pnpm setup` seeds one organization (`acme`) and one project (`prod`), so the
+(`dev:setup`, not `setup`: `pnpm setup` is a built-in pnpm command that
+configures your shell, and it shadows a script of that name.)
+
+`pnpm dev:setup` seeds one organization (`acme`) and one project (`prod`), so the
 backend address below works immediately. Open http://localhost:3000, sign up,
 and mint a token on the **Tokens** page — it is shown once and stored hashed.
 
@@ -168,8 +171,8 @@ pnpm lint
 ```
 
 The e2e suite drives the actual Terraform CLI against a real server process,
-once per storage driver. It needs `terraform` on PATH and
-`docker compose up -d --wait`.
+once per storage driver. It needs `terraform` on PATH and the local stack
+running (`pnpm dev:setup`).
 
 ## License
 

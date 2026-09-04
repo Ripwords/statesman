@@ -30,26 +30,26 @@ const projectSlugs = (process.env.STATESMAN_SEED_PROJECTS ?? 'prod')
   .filter((s) => s.length > 0)
   .map((s) => projectSlug.parse(s))
 
-// Spec §5: one organization per deployment. Keyed on "any organization at all"
-// rather than on the slug, so a re-run after a rename does not quietly create a
-// second one.
-const [existing] = await db.select().from(organization).limit(1)
+// Spec §5: one organization per deployment. So the fallback is "any
+// organization at all", not "one with this slug" — a re-run after a rename must
+// not quietly create a second one. ORDER BY makes the choice deterministic when
+// a database somehow has several.
+const named = await db.select().from(organization).where(eq(organization.slug, orgSlug))
+const [firstAny] = await db.select().from(organization).orderBy(organization.slug).limit(1)
+const existing = named[0] ?? firstAny
 
 let orgId: string
+let ownerSlug: string
 if (existing) {
   orgId = existing.id
+  ownerSlug = existing.slug
   console.log(`Organization already seeded: ${existing.slug}`)
 } else {
   orgId = ulid()
+  ownerSlug = orgSlug
   await db.insert(organization).values({ id: orgId, name: orgSlug, slug: orgSlug })
   console.log(`Seeded organization: ${orgSlug}`)
 }
-
-const owner = await db
-  .select({ slug: organization.slug })
-  .from(organization)
-  .where(eq(organization.id, orgId))
-const ownerSlug = owner[0]?.slug ?? orgSlug
 
 for (const slug of projectSlugs) {
   const inserted = await db

@@ -24,7 +24,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "gen:key": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "prepare": "husky",
-    "setup": "docker compose up -d --wait && pnpm db:migrate && pnpm db:seed"
+    "dev:setup": "docker compose up -d --wait postgres minio && docker compose run --rm createbucket && pnpm db:migrate && pnpm db:seed"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
