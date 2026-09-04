@@ -65,6 +65,40 @@ exactly how the acceptance suite in `tests/e2e/` drives the real CLI.
 
 ---
 
+## Projects
+
+A backend address only resolves for a project that already exists. Create one on
+the dashboard's project list (*New Project*), which shows the finished backend
+block, or over HTTP:
+
+```bash
+curl -X POST https://statesman.example.com/api/ui/projects \
+  -H 'content-type: application/json' \
+  -H "cookie: $SESSION" \
+  -d '{"org":"acme","project":"myapp-prod"}'
+```
+
+`org` may be omitted on a single-organization deployment, which is every v1
+deployment. The endpoint is guarded by a browser session, not by an API token —
+Terraform tokens grant state operations, never provisioning.
+
+| Condition | Status |
+|---|---|
+| Not signed in | 401 |
+| Slug that is not lowercase letters, digits and dashes | 400 |
+| Unknown organization, or none seeded yet | 404 |
+| A project with that slug already exists in the organization | 409 |
+
+`pnpm db:seed` does the same thing without a browser, for provisioning a
+deployment from a script.
+
+**There is no create-on-first-write, deliberately.** A typo in `address` would
+otherwise create a second, empty project and split a team's state across the two
+with no error anywhere. Spec §9 answers 404 for an unknown project, and that is
+the behaviour worth keeping.
+
+---
+
 ## Tokens
 
 Minted on the **Tokens** page and shown once. Keys are stored hashed; a lost

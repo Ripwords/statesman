@@ -73,22 +73,29 @@ Two consequences worth knowing before you rely on it:
   additive, so the previous version keeps working, but that is a property to
   preserve rather than assume.
 
-## 4. Seed
+## 4. Seed the organization
 
-There is no create-project endpoint; an unknown project is a 404. The seed
-script needs only `DATABASE_URL`, so run it from a checkout:
+The organization is a deployment-level thing (spec §5) and nothing in the app
+creates one, so it has to exist before anybody can sign in. The seed script
+needs only `DATABASE_URL` — not the encryption key — so run it from a checkout:
 
 ```bash
-DATABASE_URL='postgres://...' STATESMAN_SEED_PROJECTS=prod,staging pnpm db:seed
+DATABASE_URL='postgres://...' pnpm db:seed
 ```
 
 ```
 Seeded organization: acme
 Seeded project: acme/prod
-Seeded project: acme/staging
 ```
 
-It is idempotent, so it is also how you add a project later.
+**Projects, after this, are made in the dashboard** — *New Project* on the
+project list, which hands you the backend block for it — or through
+`POST /api/ui/projects`. Nothing is created implicitly: an address statesman
+does not recognise is a 404, so a typo in `address` fails loudly rather than
+silently splitting a team's state across two projects.
+
+Seeding remains the non-interactive route, for provisioning from CI: add
+`STATESMAN_SEED_PROJECTS=prod,staging,sandbox`. It is idempotent.
 
 ## 5. Health checks
 

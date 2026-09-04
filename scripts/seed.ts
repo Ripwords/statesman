@@ -21,9 +21,11 @@ const db = drizzle(pool, { schema })
 
 const orgSlug = projectSlug.parse(process.env.STATESMAN_ORG_SLUG ?? 'acme')
 
-// There is no project-creation endpoint or UI: spec §9 resolves :org/:project
-// and answers 404 when it is unknown, so a project has to exist before the
-// first `terraform init` against it. This is the only thing that makes one.
+// Projects are normally created in the dashboard, or through
+// `POST /api/ui/projects`. This is the non-interactive route, for provisioning
+// a deployment from a script: spec §9 resolves :org/:project and answers 404
+// when it is unknown, so a project must exist before the first `terraform init`
+// against it, and something has to make one before anyone can sign in.
 const projectSlugs = (process.env.STATESMAN_SEED_PROJECTS ?? 'prod')
   .split(',')
   .map((s) => s.trim())

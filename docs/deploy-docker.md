@@ -64,14 +64,14 @@ Three things happen in order, enforced by `depends_on`:
    no network fetch at deploy time.
 3. **app** starts only once migrate has completed successfully.
 
-## 3. Seed
+## 3. Seed the organization
 
-There is no create-project endpoint; an unknown project is a 404. Seed the
-organization and at least one project before pointing Terraform at it:
+The organization is a deployment-level thing (spec §5) and nothing in the app
+creates one, so it has to be seeded once before anybody can sign in:
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml \
-  run --rm -e STATESMAN_SEED_PROJECTS=prod,staging migrate pnpm db:seed
+  run --rm migrate pnpm db:seed
 ```
 
 ```
@@ -79,7 +79,15 @@ Seeded organization: acme
 Seeded project: acme/prod
 ```
 
-Re-running is a no-op per row, so this is how you add a project later too.
+**Projects, after this, are made in the dashboard** — *New Project* on the
+project list, which hands you the backend block for it — or through
+`POST /api/ui/projects`. Nothing is created implicitly: an address statesman
+does not recognise is a 404, so a typo in `address` fails loudly rather than
+silently splitting a team's state across two projects.
+
+Seeding remains the non-interactive route, for provisioning from a script:
+add `-e STATESMAN_SEED_PROJECTS=prod,staging,sandbox` to the command above. It
+is a no-op per row, so it is safe to re-run.
 
 ## 4. Verify
 

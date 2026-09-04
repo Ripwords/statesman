@@ -24,15 +24,22 @@ says which one is missing.
 (`dev:setup`, not `setup`: `pnpm setup` is a built-in pnpm command that
 configures your shell, and it shadows a script of that name.)
 
-`pnpm dev:setup` seeds one organization (`acme`) and one project (`prod`), so the
-backend address below works immediately. Open http://localhost:3000, sign up,
-and mint a token on the **Tokens** page — it is shown once and stored hashed.
+Then open http://localhost:3000, sign up, and:
 
-> **Projects are created by the seed script, not by the app.** There is no
-> "new project" button and no create endpoint; an unknown project is a 404, by
-> design (spec §9). Add more with
-> `STATESMAN_SEED_PROJECTS=prod,staging,sandbox pnpm db:seed`, which is
-> idempotent and safe to re-run.
+1. **New Project** on the project list. It hands you the exact backend block for
+   that project when it is created.
+2. **Tokens → New Token**, scoped to it. The token is shown once and stored
+   hashed.
+
+`pnpm dev:setup` also seeds one organization (`acme`) and one project (`prod`),
+so the backend address below works immediately without either step.
+
+> **Projects are never created implicitly.** An address statesman does not
+> recognise is a 404, by design (spec §9) — so a typo in `address` fails loudly
+> instead of quietly creating a second project and splitting your state across
+> the two. Create them in the dashboard, through `POST /api/ui/projects`, or
+> non-interactively with `STATESMAN_SEED_PROJECTS=prod,staging pnpm db:seed`,
+> which is idempotent and safe to re-run.
 
 ---
 
@@ -154,6 +161,10 @@ answer.
   Terraform 1.14.9; it is how `httpClient.Lock` builds the error. The holder's
   name is in the response and is shown in the dashboard's lock banner, so that
   is where to look for _who_, and force-unlock is also a button there.
+- **Creating a project** is `POST /api/ui/projects` — session-guarded, body
+  `{ "org": "acme", "project": "myapp-prod" }`, with `org` optional on a
+  single-organization deployment. A duplicate is a 409, a slug the router could
+  not resolve is a 400. `pnpm db:seed` is the same thing without a browser.
 - **Retention** keeps the last 100 versions and everything from the last 30
   days, whichever is greater, and never prunes the current version. `POST
 /api/admin/retention` runs a pass; it is session-guarded.
