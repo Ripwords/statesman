@@ -1,3 +1,8 @@
 <template>
-  <div>statesman</div>
+  <UApp>
+    <NuxtRouteAnnouncer />
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
+  </UApp>
 </template>
