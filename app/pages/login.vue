@@ -3,7 +3,7 @@ import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
 import { z } from 'zod'
 
 definePageMeta({ layout: false })
-useHead({ title: 'Sign In · statesman' })
+useHead({ title: 'Sign In · statesman', htmlAttrs: { lang: 'en' } })
 
 const schema = z.object({
   email: z.email('Enter a valid email address, like you@example.com'),

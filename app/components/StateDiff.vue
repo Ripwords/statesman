@@ -3,10 +3,23 @@ import type { DiffLine } from '~/utils/diff'
 
 const props = defineProps<{ lines: DiffLine[] }>()
 const showUnchanged = ref(false)
+const showAll = ref(false)
 
-const visible = computed(() =>
+/**
+ * A real state file flattens to thousands of leaf paths, so showing unchanged
+ * lines can mean five figures of table rows. Rendering is capped rather than
+ * virtualised: a cap needs no dependency, and a diff nobody reads past the
+ * first screen of does not earn a windowing library.
+ */
+const ROW_CAP = 500
+
+const selected = computed(() =>
   showUnchanged.value ? props.lines : props.lines.filter((l) => l.kind !== 'same')
 )
+const visible = computed(() =>
+  showAll.value ? selected.value : selected.value.slice(0, ROW_CAP)
+)
+const hiddenCount = computed(() => selected.value.length - visible.value.length)
 const changeCount = computed(() => props.lines.filter((l) => l.kind !== 'same').length)
 </script>
 
@@ -58,8 +71,15 @@ const changeCount = computed(() => props.lines.filter((l) => l.kind !== 'same').
               'bg-error/10': line.kind === 'remove'
             }"
           >
-            <td class="w-6 px-2 py-1 text-center text-muted select-none" aria-hidden="true">
-              {{ line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' ' }}
+            <!--
+              The marker is hidden from assistive technology, but the cell is
+              not: dropping a whole <td> would leave the row one column short
+              of the three the header declares.
+            -->
+            <td class="w-6 px-2 py-1 text-center text-muted select-none">
+              <span aria-hidden="true">
+                {{ line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' ' }}
+              </span>
             </td>
             <td class="px-2 py-1">
               <span class="sr-only">
@@ -71,6 +91,19 @@ const changeCount = computed(() => props.lines.filter((l) => l.kind !== 'same').
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="hiddenCount > 0" class="flex flex-wrap items-center gap-3">
+      <p class="text-sm text-muted tabular">
+        Showing the first {{ ROW_CAP }} lines. {{ hiddenCount }} more are not rendered.
+      </p>
+      <UButton
+        color="neutral"
+        variant="outline"
+        size="xs"
+        :label="`Show All ${selected.length} Lines`"
+        @click="showAll = true"
+      />
     </div>
   </div>
 </template>

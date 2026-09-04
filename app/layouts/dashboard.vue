@@ -3,6 +3,11 @@ import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 
 const { user, signOut } = useAuth()
 
+// Every authenticated route renders through this layout, and /login sets the
+// same attribute for itself. Without it assistive technology has to guess the
+// document language.
+useHead({ htmlAttrs: { lang: 'en' } })
+
 const links: NavigationMenuItem[] = [
   { label: 'Projects', icon: 'i-lucide-boxes', to: '/' },
   { label: 'Tokens', icon: 'i-lucide-key-round', to: '/tokens' }
@@ -31,9 +36,11 @@ const accountItems: DropdownMenuItem[][] = [
           class="flex shrink-0 items-center gap-2 rounded-md font-semibold tracking-tight transition-[color] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <UIcon name="i-lucide-landmark" class="size-5 text-primary" aria-hidden="true" />
-          <!-- Hidden visually on the narrowest screens so the single nav
-               landmark below never has to compete for width, but still the
-               link's accessible name. -->
+          <!--
+            Hidden visually below the sm breakpoint so the icon, the nav and
+            the two header buttons all fit on a 320px screen. It stays in the
+            accessibility tree, so the link keeps the name "statesman".
+          -->
           <span class="sr-only sm:not-sr-only" translate="no">statesman</span>
         </NuxtLink>
 

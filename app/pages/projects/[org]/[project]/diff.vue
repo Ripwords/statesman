@@ -59,7 +59,7 @@ const lines = computed(() =>
     </EmptyState>
 
     <div v-else-if="loading" aria-live="polite" aria-busy="true">
-      <USkeleton class="h-64 w-full" />
+      <USkeleton class="h-64 w-full motion-reduce:animate-none" />
       <span class="sr-only">Loading Versions…</span>
     </div>
 

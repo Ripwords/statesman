@@ -80,7 +80,7 @@ function onError(event: FormErrorEvent) {
     <UFormField
       label="Name"
       name="name"
-      description="Identifies this token in the list. Use where it will run."
+      description="Identifies this token in the list. Name it after where it will run."
       required
     >
       <UInput

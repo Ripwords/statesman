@@ -25,7 +25,7 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
     </div>
 
     <div v-if="status === 'pending'" class="space-y-3" aria-live="polite" aria-busy="true">
-      <USkeleton v-for="n in 3" :key="n" class="h-24 w-full" />
+      <USkeleton v-for="n in 3" :key="n" class="h-24 w-full motion-reduce:animate-none" />
       <span class="sr-only">Loading Projects…</span>
     </div>
 
@@ -33,7 +33,7 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
       v-else-if="!projects?.length"
       icon="i-lucide-boxes"
       title="No Projects Yet"
-      description="A project appears here the first time Terraform writes state to it. Create a token, point a backend block at statesman, and run apply."
+      description="A project appears here the first time Terraform writes state to it. Create a token, point a backend block at this server, and run apply."
     >
       <UButton to="/tokens" label="Create a Token" icon="i-lucide-key-round" />
     </EmptyState>
