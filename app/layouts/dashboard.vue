@@ -22,14 +22,23 @@ async function onSignOut() {
   // the UI must say so rather than silently look signed in.
   toast.add({
     title: 'Could Not Sign Out',
-    description: 'The server did not confirm the sign-out, so you are still signed in. Check your connection and try again.',
+    description:
+      'The server did not confirm the sign-out, so you are still signed in. Check your connection and try again.',
     color: 'error',
     icon: 'i-lucide-triangle-alert'
   })
 }
 
 const accountItems: DropdownMenuItem[][] = [
-  [{ label: 'Sign Out', icon: 'i-lucide-log-out', onSelect: () => { void onSignOut() } }]
+  [
+    {
+      label: 'Sign Out',
+      icon: 'i-lucide-log-out',
+      onSelect: () => {
+        void onSignOut()
+      }
+    }
+  ]
 ]
 </script>
 
@@ -102,7 +111,17 @@ const accountItems: DropdownMenuItem[][] = [
   switches, select triggers) that no class of ours can touch, and its zero
   specificity means any explicit scroll-mt-* still wins.
 */
-:where(a[href], area, button, input, select, textarea, summary, iframe, [tabindex]:not([tabindex='-1'])) {
+:where(
+  a[href],
+  area,
+  button,
+  input,
+  select,
+  textarea,
+  summary,
+  iframe,
+  [tabindex]:not([tabindex='-1'])
+) {
   scroll-margin-top: 6rem;
   scroll-margin-bottom: 2rem;
 }

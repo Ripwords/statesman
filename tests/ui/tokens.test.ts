@@ -9,14 +9,18 @@ import { tokenConfigSchema } from '../../shared/schemas/token'
 describe('token config mapping', () => {
   it('maps actions onto state permissions', () => {
     const config = tokenConfigSchema.parse({
-      name: 'ci', actions: ['read', 'write'], scope: { kind: 'all' }
+      name: 'ci',
+      actions: ['read', 'write'],
+      scope: { kind: 'all' }
     })
     expect(toApiKeyBody(config, 'u1').permissions).toEqual({ state: ['read', 'write'] })
   })
 
   it('carries project scope into metadata', () => {
     const config = tokenConfigSchema.parse({
-      name: 'ci', actions: ['read'], scope: { kind: 'projects', projects: ['acme/prod'] }
+      name: 'ci',
+      actions: ['read'],
+      scope: { kind: 'projects', projects: ['acme/prod'] }
     })
     expect(toApiKeyBody(config, 'u1').metadata).toEqual({
       scope: { kind: 'projects', projects: ['acme/prod'] }
@@ -25,18 +29,29 @@ describe('token config mapping', () => {
 
   it('converts expiry days to seconds', () => {
     const config = tokenConfigSchema.parse({
-      name: 'ci', actions: ['read'], scope: { kind: 'all' }, expiresInDays: 7
+      name: 'ci',
+      actions: ['read'],
+      scope: { kind: 'all' },
+      expiresInDays: 7
     })
     expect(toApiKeyBody(config, 'u1').expiresIn).toBe(604_800)
   })
 
   it('omits expiry when unset', () => {
-    const config = tokenConfigSchema.parse({ name: 'ci', actions: ['read'], scope: { kind: 'all' } })
+    const config = tokenConfigSchema.parse({
+      name: 'ci',
+      actions: ['read'],
+      scope: { kind: 'all' }
+    })
     expect(toApiKeyBody(config, 'u1').expiresIn).toBeUndefined()
   })
 
   it('names the owning user', () => {
-    const config = tokenConfigSchema.parse({ name: 'ci', actions: ['read'], scope: { kind: 'all' } })
+    const config = tokenConfigSchema.parse({
+      name: 'ci',
+      actions: ['read'],
+      scope: { kind: 'all' }
+    })
     expect(toApiKeyBody(config, 'u1').userId).toBe('u1')
   })
 
@@ -58,8 +73,11 @@ describe('token config mapping', () => {
 
   it('converts an explicit rate limit window from seconds to milliseconds', () => {
     const config = tokenConfigSchema.parse({
-      name: 'b', actions: ['read'], scope: { kind: 'all' },
-      rateLimitMax: 60, rateLimitWindowSeconds: 60
+      name: 'b',
+      actions: ['read'],
+      scope: { kind: 'all' },
+      rateLimitMax: 60,
+      rateLimitWindowSeconds: 60
     })
     const body = toApiKeyBody(config, 'u1')
     expect(body.rateLimitEnabled).toBe(true)
@@ -80,8 +98,8 @@ describe('token api', () => {
   })
 
   it('rejects an unauthenticated revoke', async () => {
-    await expect(
-      deleteToken(testEvent({ params: { id: 'k1' } }))
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect(deleteToken(testEvent({ params: { id: 'k1' } }))).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 })

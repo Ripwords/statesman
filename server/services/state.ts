@@ -70,16 +70,18 @@ export async function writeState(args: {
   // sweep collects. The reverse order would leave a pointer to nothing.
   await store().put(key, seal(env().ENCRYPTION_KEY, args.body))
 
-  await db().insert(stateVersion).values({
-    id: versionId,
-    projectId: args.projectId,
-    serial,
-    lineage,
-    sizeBytes: args.body.length,
-    md5: createHash('md5').update(args.body).digest('hex'),
-    blobKey: key,
-    createdBy: args.userId
-  })
+  await db()
+    .insert(stateVersion)
+    .values({
+      id: versionId,
+      projectId: args.projectId,
+      serial,
+      lineage,
+      sizeBytes: args.body.length,
+      md5: createHash('md5').update(args.body).digest('hex'),
+      blobKey: key,
+      createdBy: args.userId
+    })
 
   await db()
     .insert(projectState)

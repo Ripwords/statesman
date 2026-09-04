@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ projectId: string, who: string | null, since: string | null }>()
+const props = defineProps<{ projectId: string; who: string | null; since: string | null }>()
 const emit = defineEmits<{ released: [] }>()
 
 const open = ref(false)
@@ -16,7 +16,8 @@ async function forceUnlock() {
     emit('released')
     open.value = false
   } catch {
-    failure.value = 'Could not release the lock. Check that you are still signed in, then try again.'
+    failure.value =
+      'Could not release the lock. Check that you are still signed in, then try again.'
   } finally {
     pending.value = false
   }
@@ -25,24 +26,14 @@ async function forceUnlock() {
 
 <template>
   <div>
-    <UAlert
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-lock"
-      title="State Is Locked"
-    >
+    <UAlert color="warning" variant="subtle" icon="i-lucide-lock" title="State Is Locked">
       <template #description>
         Held by <span class="break-words" translate="no">{{ who ?? 'an unknown process' }}</span>
-        <ClientOnly v-if="since"> since {{ when.format(new Date(since)) }}</ClientOnly>.
-        Terraform will refuse to apply until it is released.
+        <ClientOnly v-if="since"> since {{ when.format(new Date(since)) }}</ClientOnly
+        >. Terraform will refuse to apply until it is released.
       </template>
       <template #actions>
-        <UButton
-          color="warning"
-          variant="outline"
-          label="Force Unlock"
-          @click="open = true"
-        />
+        <UButton color="warning" variant="outline" label="Force Unlock" @click="open = true" />
       </template>
     </UAlert>
 
@@ -54,9 +45,8 @@ async function forceUnlock() {
       <template #body>
         <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
-            Force-unlocking while another process is mid-apply can corrupt your state file.
-            Only do this when you are certain the holder has died. This action is recorded
-            in the audit log.
+            Force-unlocking while another process is mid-apply can corrupt your state file. Only do
+            this when you are certain the holder has died. This action is recorded in the audit log.
           </p>
           <div aria-live="polite">
             <UAlert

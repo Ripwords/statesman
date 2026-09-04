@@ -28,7 +28,13 @@ describe('rollback', () => {
     const first = await firstVersionId()
     await writeState({ projectId, orgSlug: ORG, projectSlug: 'prod', body: body(2), userId: 'u' })
 
-    await rollbackTo({ projectId, orgSlug: ORG, projectSlug: 'prod', versionId: first, userId: 'u' })
+    await rollbackTo({
+      projectId,
+      orgSlug: ORG,
+      projectSlug: 'prod',
+      versionId: first,
+      userId: 'u'
+    })
     expect(await readCurrentState(projectId)).toEqual(body(1))
   })
 
@@ -37,7 +43,13 @@ describe('rollback', () => {
     const first = await firstVersionId()
     await writeState({ projectId, orgSlug: ORG, projectSlug: 'prod', body: body(2), userId: 'u' })
 
-    await rollbackTo({ projectId, orgSlug: ORG, projectSlug: 'prod', versionId: first, userId: 'u' })
+    await rollbackTo({
+      projectId,
+      orgSlug: ORG,
+      projectSlug: 'prod',
+      versionId: first,
+      userId: 'u'
+    })
     expect(await listVersions(projectId)).toHaveLength(3)
   })
 

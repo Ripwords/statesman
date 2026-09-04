@@ -16,8 +16,8 @@ useHead({ title: () => `Diff · ${org.value}/${slug.value} · statesman` })
 // has to as well, or it will happily draw a diff under a breadcrumb pointing at
 // a project that does not exist. Shares the list's cache key, so it is free.
 const { data: projects } = await useFetch('/api/ui/projects')
-const project = computed(() =>
-  projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
+const project = computed(
+  () => projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
 )
 
 if (import.meta.server && !project.value) {
@@ -27,14 +27,24 @@ if (import.meta.server && !project.value) {
 
 // Two fetches over one route need distinct keys, and neither should fire until
 // the query string actually names a version.
-const { data: left, status: leftStatus, error: leftError } = await useFetch(
-  () => `/api/ui/versions/${a.value}`,
-  { key: 'diff-left', immediate: selected.value && project.value !== null, watch: [a] }
-)
-const { data: right, status: rightStatus, error: rightError } = await useFetch(
-  () => `/api/ui/versions/${b.value}`,
-  { key: 'diff-right', immediate: selected.value && project.value !== null, watch: [b] }
-)
+const {
+  data: left,
+  status: leftStatus,
+  error: leftError
+} = await useFetch(() => `/api/ui/versions/${a.value}`, {
+  key: 'diff-left',
+  immediate: selected.value && project.value !== null,
+  watch: [a]
+})
+const {
+  data: right,
+  status: rightStatus,
+  error: rightError
+} = await useFetch(() => `/api/ui/versions/${b.value}`, {
+  key: 'diff-right',
+  immediate: selected.value && project.value !== null,
+  watch: [b]
+})
 
 const loading = computed(() => leftStatus.value === 'pending' || rightStatus.value === 'pending')
 const failed = computed(() => Boolean(leftError.value ?? rightError.value))
@@ -47,18 +57,18 @@ const lines = computed(() =>
 <template>
   <div class="space-y-6">
     <UBreadcrumb
-      :items="project
-        ? [
-          { label: 'Projects', to: '/' },
-          { label: `${org}/${slug}`, to: `/projects/${org}/${slug}` },
-          { label: 'Diff' }
-        ]
-        : [{ label: 'Projects', to: '/' }, { label: 'Diff' }]"
+      :items="
+        project
+          ? [
+              { label: 'Projects', to: '/' },
+              { label: `${org}/${slug}`, to: `/projects/${org}/${slug}` },
+              { label: 'Diff' }
+            ]
+          : [{ label: 'Projects', to: '/' }, { label: 'Diff' }]
+      "
     />
 
-    <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">
-      Compare Versions
-    </h1>
+    <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Compare Versions</h1>
 
     <EmptyState
       v-if="!project"

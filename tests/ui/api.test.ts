@@ -18,26 +18,24 @@ describe('dashboard api', () => {
   })
 
   it('rejects an unauthenticated version list', async () => {
-    await expect(
-      versionsHandler(testEvent({ params: { id: 'p1' } }))
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect(versionsHandler(testEvent({ params: { id: 'p1' } }))).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('rejects an unauthenticated version read', async () => {
-    await expect(
-      versionHandler(testEvent({ params: { id: '01ABC' } }))
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect(versionHandler(testEvent({ params: { id: '01ABC' } }))).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('rejects an unauthenticated force-unlock', async () => {
-    await expect(
-      lockHandler(testEvent({ params: { id: 'p1' } }))
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect(lockHandler(testEvent({ params: { id: 'p1' } }))).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('refuses before validating the route parameter, so a bad id is still 401', async () => {
-    await expect(
-      lockHandler(testEvent({ params: {} }))
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect(lockHandler(testEvent({ params: {} }))).rejects.toMatchObject({ statusCode: 401 })
   })
 })

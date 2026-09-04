@@ -29,9 +29,10 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   if (!result.ok) {
     // A rejected password and an unreachable server need different next steps,
     // so they get different sentences.
-    formError.value = result.reason === 'unreachable'
-      ? 'We could not reach the sign-in service. Check your connection, then try again.'
-      : 'That email and password did not match. Check both and try again.'
+    formError.value =
+      result.reason === 'unreachable'
+        ? 'We could not reach the sign-in service. Check your connection, then try again.'
+        : 'That email and password did not match. Check both and try again.'
     return
   }
   await navigateTo(safeInternalPath(route.query.redirect))
@@ -64,13 +65,7 @@ function onError(event: FormErrorEvent) {
         />
       </div>
 
-      <UForm
-        :schema="schema"
-        :state="state"
-        class="space-y-4"
-        @submit="onSubmit"
-        @error="onError"
-      >
+      <UForm :schema="schema" :state="state" class="space-y-4" @submit="onSubmit" @error="onError">
         <UFormField label="Email" name="email" required>
           <UInput
             v-model="state.email"

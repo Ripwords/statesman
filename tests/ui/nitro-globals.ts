@@ -17,7 +17,7 @@ export type ApiError = Error & {
   data: unknown
 }
 
-type ErrorInput = { statusCode?: number, statusMessage?: string, data?: unknown }
+type ErrorInput = { statusCode?: number; statusMessage?: string; data?: unknown }
 
 export function isApiError(value: unknown): value is ApiError {
   return value instanceof Error && typeof (value as Partial<ApiError>).statusCode === 'number'
@@ -46,7 +46,7 @@ async function runValidator<T>(data: unknown, validator: Validator<T>): Promise<
   }
 }
 
-type TestEventContext = { params: Record<string, string>, body: unknown }
+type TestEventContext = { params: Record<string, string>; body: unknown }
 
 function contextOf(event: H3Event): TestEventContext {
   const { context } = event as unknown as { context: Partial<TestEventContext> }

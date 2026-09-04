@@ -38,10 +38,14 @@ describe('diffJson', () => {
 
   it('distinguishes an empty container from a missing one', () => {
     expect(diffJson({ tags: {} }, { tags: [] })).toContainEqual({
-      kind: 'remove', path: 'tags', value: '{}'
+      kind: 'remove',
+      path: 'tags',
+      value: '{}'
     })
     expect(diffJson({ tags: {} }, { tags: [] })).toContainEqual({
-      kind: 'add', path: 'tags', value: '[]'
+      kind: 'add',
+      path: 'tags',
+      value: '[]'
     })
   })
 

@@ -10,27 +10,29 @@ import { requireSession } from '../../utils/ui-auth'
  */
 export default defineEventHandler(async (event) => {
   await requireSession(event)
-  return db()
-    .select({
-      id: project.id,
-      slug: project.slug,
-      name: project.name,
-      org: organization.slug,
-      updatedAt: projectState.updatedAt,
-      serial: stateVersion.serial,
-      sizeBytes: stateVersion.sizeBytes,
-      lockedBy: stateLock.who,
-      lockedAt: stateLock.createdAt,
-      versionCount: sql<number>`(
+  return (
+    db()
+      .select({
+        id: project.id,
+        slug: project.slug,
+        name: project.name,
+        org: organization.slug,
+        updatedAt: projectState.updatedAt,
+        serial: stateVersion.serial,
+        sizeBytes: stateVersion.sizeBytes,
+        lockedBy: stateLock.who,
+        lockedAt: stateLock.createdAt,
+        versionCount: sql<number>`(
         select count(*)::int from state_version sv where sv.project_id = ${project.id}
       )`
-    })
-    .from(project)
-    .innerJoin(organization, eq(project.orgId, organization.id))
-    .leftJoin(projectState, eq(projectState.projectId, project.id))
-    .leftJoin(stateVersion, eq(projectState.currentVersionId, stateVersion.id))
-    .leftJoin(stateLock, eq(stateLock.projectId, project.id))
-    // NULLS LAST, so a project that exists but has never been written to sits
-    // at the bottom rather than the top of the list.
-    .orderBy(sql`${projectState.updatedAt} desc nulls last`)
+      })
+      .from(project)
+      .innerJoin(organization, eq(project.orgId, organization.id))
+      .leftJoin(projectState, eq(projectState.projectId, project.id))
+      .leftJoin(stateVersion, eq(projectState.currentVersionId, stateVersion.id))
+      .leftJoin(stateLock, eq(stateLock.projectId, project.id))
+      // NULLS LAST, so a project that exists but has never been written to sits
+      // at the bottom rather than the top of the list.
+      .orderBy(sql`${projectState.updatedAt} desc nulls last`)
+  )
 })

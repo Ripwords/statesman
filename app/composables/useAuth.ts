@@ -21,7 +21,7 @@ const sessionResponseSchema = z.object({ user: sessionUserSchema })
  * behind a login form.
  */
 export type SessionState =
-  | { status: 'authenticated', user: SessionUser }
+  | { status: 'authenticated'; user: SessionUser }
   | { status: 'anonymous' }
   | { status: 'unavailable' }
 
@@ -103,7 +103,7 @@ export async function loadSession(options: { force?: boolean } = {}): Promise<Se
  * verified against the real client. Reading only `error` therefore leaves the
  * caller's `pending` flag stuck on forever and the user with no explanation.
  */
-export type SignInResult = { ok: true } | { ok: false, reason: 'rejected' | 'unreachable' }
+export type SignInResult = { ok: true } | { ok: false; reason: 'rejected' | 'unreachable' }
 
 export function useAuth() {
   const state = sessionState()
@@ -111,7 +111,7 @@ export function useAuth() {
     state.value?.status === 'authenticated' ? state.value.user : null
   )
 
-  async function signIn(credentials: { email: string, password: string }): Promise<SignInResult> {
+  async function signIn(credentials: { email: string; password: string }): Promise<SignInResult> {
     try {
       const { error } = await useAuthClient().signIn.email(credentials)
       if (error) return { ok: false, reason: 'rejected' }

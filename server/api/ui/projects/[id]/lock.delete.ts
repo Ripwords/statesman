@@ -15,10 +15,7 @@ export default defineEventHandler(async (event) => {
   const session = await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
 
-  const rows = await db()
-    .select({ orgId: project.orgId })
-    .from(project)
-    .where(eq(project.id, id))
+  const rows = await db().select({ orgId: project.orgId }).from(project).where(eq(project.id, id))
   const orgId = rows[0]?.orgId
   if (!orgId) {
     throw createError({
