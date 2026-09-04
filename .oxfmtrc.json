@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "ignorePatterns": [
+    ".nuxt/",
+    ".output/",
+    ".data/",
+    "dist/",
+    "drizzle/",
+    "pnpm-lock.yaml",
+    ".agents/",
+    ".claude/",
+    ".superpowers/",
+    "docs/"
+  ]
+}

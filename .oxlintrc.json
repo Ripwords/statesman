@@ -1,0 +1,63 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "env": {
+    "builtin": true,
+    "es2024": true,
+    "node": true
+  },
+  "rules": {
+    "no-console": "warn",
+    "eqeqeq": ["error", "smart"],
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/no-null": "off"
+  },
+  "overrides": [
+    {
+      "files": ["server/**/*.ts", "tests/**/*.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["tests/**/*.ts", "**/*.test.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "vitest/require-to-throw-message": "off",
+        "vitest/valid-expect": [
+          "error",
+          {
+            "maxArgs": 2
+          }
+        ]
+      }
+    }
+  ],
+  "ignorePatterns": [
+    ".nuxt/",
+    ".output/",
+    ".data/",
+    "dist/",
+    "drizzle/",
+    "node_modules/",
+    ".agents/",
+    ".claude/",
+    ".superpowers/"
+  ]
+}
