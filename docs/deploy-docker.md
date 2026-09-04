@@ -105,7 +105,28 @@ the first `terraform apply` rather than at deploy time. The container's own
 healthcheck runs the same endpoint, so `docker compose ps` reports `(healthy)`
 only when state can actually be stored.
 
-Then sign up at the app's URL, mint a token on the **Tokens** page, and run the
+Then create your account — there is no sign-up page, by design:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml \
+  run --rm migrate pnpm user:create you@example.com "Your Name"
+```
+
+```
+Created user: you@example.com
+Password: <printed once>
+Shown once. Sign in and change it, or store it in a password manager.
+```
+
+Pass `-e STATESMAN_USER_PASSWORD=…` to choose the password instead of having one
+generated. The command needs `DATABASE_URL` and `BETTER_AUTH_SECRET`, which the
+migrate service has, and deliberately not the encryption key.
+
+> **Every account you create can read every project**, including the decrypted
+> plaintext of every state file. There are no roles and no per-project
+> permissions — see the README. Give people accounts accordingly.
+
+Now sign in at the app's URL, mint a token on the **Tokens** page, and run the
 real thing:
 
 ```bash
@@ -165,3 +186,7 @@ provider and no cloud credentials.
 - **Behind a proxy**, set `BETTER_AUTH_URL` to the public origin and forward a
   trusted client IP header — otherwise Better Auth logs a warning and rate
   limits fall back to one shared bucket per path.
+- **Retention runs itself here.** Nitro's scheduler fires the task at 03:17
+  daily inside the app container, pruning versions past both thresholds and
+  sweeping orphaned blobs. `POST /api/admin/retention` runs a pass on demand.
+- **Uptime checks** may use `HEAD /api/health`; it answers 200 like `GET`.

@@ -119,7 +119,19 @@ endpoint is unauthenticated, so it reports pass/fail only.
 
 ## 6. Verify with real Terraform
 
-Sign up at your domain, mint a token on the **Tokens** page, then:
+Create your account first — there is no sign-up page, by design. The script
+needs only `DATABASE_URL` and `BETTER_AUTH_SECRET`, so run it from a checkout:
+
+```bash
+DATABASE_URL='postgres://...' BETTER_AUTH_SECRET='...' \
+  pnpm user:create you@example.com "Your Name"
+```
+
+> **Every account you create can read every project**, including the decrypted
+> plaintext of every state file. There are no roles and no per-project
+> permissions — see the README.
+
+Then sign in at your domain, mint a token on the **Tokens** page, and:
 
 ```bash
 mkdir statesman-check && cd statesman-check
@@ -158,6 +170,24 @@ Then `terraform apply -auto-approve` and `terraform destroy -auto-approve`.
 `POST`/`DELETE` locking matters most here: nothing documents whether Vercel's
 edge forwards the `LOCK` and `UNLOCK` verbs, and this configuration never asks
 it to.
+
+---
+
+## Retention does not run on its own here
+
+Nitro's scheduler needs a process that stays alive, and a serverless function
+does not. The retention task ships and is skipped: nothing prunes old versions
+or sweeps orphaned blobs unless something calls it.
+
+Trigger it externally against `POST /api/admin/retention`. It is session-guarded
+like the rest of `/api/ui/*`, so a caller needs a signed-in cookie — a small
+scheduled job that signs in with an operator account and posts once a day is the
+straightforward approach. Vercel Cron cannot do this on its own, because it
+sends an unauthenticated GET.
+
+Until that job exists, treat `RETENTION_KEEP_VERSIONS` and
+`RETENTION_KEEP_DAYS` as inert on this deployment, and expect the bucket to
+grow by one object per apply forever.
 
 ---
 

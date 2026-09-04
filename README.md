@@ -24,15 +24,21 @@ says which one is missing.
 (`dev:setup`, not `setup`: `pnpm setup` is a built-in pnpm command that
 configures your shell, and it shadows a script of that name.)
 
-Then open http://localhost:3000, sign up, and:
+There is no sign-up page. Create your account from the command line:
+
+```bash
+pnpm user:create you@example.com     # prints a generated password, once
+```
+
+Then sign in at http://localhost:3000 and:
 
 1. **New Project** on the project list. It hands you the exact backend block for
    that project when it is created.
 2. **Tokens → New Token**, scoped to it. The token is shown once and stored
-   hashed.
+   hashed — a token is always required, there is no anonymous access.
 
 `pnpm dev:setup` also seeds one organization (`acme`) and one project (`prod`),
-so the backend address below works immediately without either step.
+so the backend address below needs only a token.
 
 > **Projects are never created implicitly.** An address statesman does not
 > recognise is a 404, by design (spec §9) — so a typo in `address` fails loudly
@@ -81,6 +87,32 @@ acquire and `DELETE` to release. Two ordinary verbs, nothing exotic to forward.
 The server accepts `LOCK`/`UNLOCK` on both paths as well, so a client configured
 the default way still works; `POST`/`DELETE` is what these docs recommend
 because it removes the platform question entirely.
+
+---
+
+## Everyone you create can read every project
+
+There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
+accounts exist only because an operator ran `pnpm user:create`, which needs
+database access and `BETTER_AUTH_SECRET`.
+
+That matters, because **every account can see everything**: the project list,
+the version timeline, the decrypted diff, force unlock, rollback, and token
+creation are all guarded by "is there a session" and nothing finer. There are no
+roles, no per-project permissions, and no ownership.
+
+That is the intended model, not a gap. One deployment serves one organization,
+so the accounts are the people trusted with that organization's state — but the
+consequence is worth stating plainly:
+
+> Creating an account grants read access to the **plaintext** of every state
+> file in the deployment, including the provider credentials and database
+> passwords inside them. If some people should see only some projects, run a
+> second deployment; do not give them an account here.
+
+Scoped API tokens are the finer-grained control, and they are for machines: a
+token names the exact projects and operations it may use, so a CI runner can be
+given far less than a person.
 
 ---
 
@@ -161,13 +193,20 @@ answer.
   Terraform 1.14.9; it is how `httpClient.Lock` builds the error. The holder's
   name is in the response and is shown in the dashboard's lock banner, so that
   is where to look for _who_, and force-unlock is also a button there.
+- **Creating an account** is `pnpm user:create <email> [name]`. It needs only
+  `DATABASE_URL` and `BETTER_AUTH_SECRET` — deliberately not the encryption key
+  — so it runs from an operator machine or the migration container.
+- **Retention** runs as a scheduled task at 03:17 daily on a long-running
+  server. Nitro has no scheduler on serverless, so a Vercel deployment must
+  trigger `POST /api/admin/retention` itself; see the deployment guide.
 - **Creating a project** is `POST /api/ui/projects` — session-guarded, body
   `{ "org": "acme", "project": "myapp-prod" }`, with `org` optional on a
   single-organization deployment. A duplicate is a 409, a slug the router could
   not resolve is a 400. `pnpm db:seed` is the same thing without a browser.
-- **Retention** keeps the last 100 versions and everything from the last 30
-  days, whichever is greater, and never prunes the current version. `POST
-/api/admin/retention` runs a pass; it is session-guarded.
+- **Retention thresholds** keep the last 100 versions and everything from the
+  last 30 days, whichever is greater. The current version is never pruned, and
+  an orphaned blob is left alone for an hour before it is swept, because a blob
+  younger than that may be a write still in progress.
 - **`GET /api/health`** is unauthenticated and runs four probes — encryption
   key round-trip, database, migrations applied, blob store writable. It reports
   names and pass/fail only, never configuration.

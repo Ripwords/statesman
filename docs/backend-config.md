@@ -65,6 +65,30 @@ exactly how the acceptance suite in `tests/e2e/` drives the real CLI.
 
 ---
 
+## Accounts
+
+There is no public sign-up. `POST /api/auth/sign-up/email` is refused, and
+accounts are created by the operator:
+
+```bash
+pnpm user:create you@example.com "Your Name"
+```
+
+It reads `DATABASE_URL` and `BETTER_AUTH_SECRET` and nothing else — in
+particular not `STATESMAN_ENCRYPTION_KEY`, so it can run in a migration
+container without handing it the key that decrypts state. Pass
+`STATESMAN_USER_PASSWORD` to choose the password, or let it generate one and
+print it once.
+
+**Every account sees every project.** Session-guarded routes check that a
+session exists and nothing finer: there are no roles, no ownership, and no
+per-project permissions, because one deployment serves one organization. An
+account is therefore read access to the plaintext of every state file in the
+deployment. Scoped API tokens, below, are the finer-grained control, and they
+are for machines rather than people.
+
+---
+
 ## Projects
 
 A backend address only resolves for a project that already exists. Create one on
@@ -102,7 +126,8 @@ the behaviour worth keeping.
 ## Tokens
 
 Minted on the **Tokens** page and shown once. Keys are stored hashed; a lost
-token is replaced, not recovered.
+token is replaced, not recovered. Revoking one takes effect on the next request
+and is the only kill switch — there is no reversible disable.
 
 | Control | Effect |
 |---|---|
@@ -110,7 +135,6 @@ token is replaced, not recovered.
 | Project scope | *Scoped* (recommended) lists exact `org/project` pairs; *account-wide* covers every project the owner can reach |
 | Expiry | Optional, up to 3650 days |
 | Rate limit | Defaults to 120 requests/minute per key. One `apply` costs roughly 4–6 requests and a `plan` about 3 |
-| Enabled | A kill switch that does not delete the key |
 
 Scope matching is exact string equality on `org/project`, never a prefix test —
 a token for `acme/prod` cannot reach `acme/prod-2`.
