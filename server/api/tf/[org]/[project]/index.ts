@@ -7,12 +7,16 @@ import {
   lockIdQuerySchema
 } from '../../../../utils/tf-handler'
 import { readCurrentState, writeState, purgeState } from '../../../../services/state'
-import { recordAudit } from '../../../../services/audit'
+import { recordAuditBestEffort } from '../../../../services/audit'
 import { currentLock } from '../../../../services/lock'
 import type { StateAction } from '../../../../../shared/schemas/token'
 
 const ACTION_FOR_METHOD: Record<string, StateAction> = {
-  GET: 'read', POST: 'write', DELETE: 'delete', LOCK: 'lock', UNLOCK: 'lock'
+  GET: 'read',
+  POST: 'write',
+  DELETE: 'delete',
+  LOCK: 'lock',
+  UNLOCK: 'lock'
 }
 
 export default defineEventHandler(async (event) => {
@@ -65,17 +69,27 @@ export default defineEventHandler(async (event) => {
       body,
       userId: principal.userId
     })
-    await recordAudit({
-      orgId: resolved.orgId, projectId: resolved.id, actorType: 'api-key',
-      actorId: principal.keyId, action: 'state.write', meta: { versionId, bytes: body.length }
+    // Best-effort, and deliberately so: the bytes are stored and the pointer
+    // has moved, so a failed audit insert must not answer 500 to a write that
+    // succeeded — Terraform retries a 500 and writes a duplicate version.
+    await recordAuditBestEffort({
+      orgId: resolved.orgId,
+      projectId: resolved.id,
+      actorType: 'api-key',
+      actorId: principal.keyId,
+      action: 'state.write',
+      meta: { versionId, bytes: body.length }
     })
     return { ok: true }
   }
 
   await purgeState(resolved.id)
-  await recordAudit({
-    orgId: resolved.orgId, projectId: resolved.id, actorType: 'api-key',
-    actorId: principal.keyId, action: 'state.purge'
+  await recordAuditBestEffort({
+    orgId: resolved.orgId,
+    projectId: resolved.id,
+    actorType: 'api-key',
+    actorId: principal.keyId,
+    action: 'state.purge'
   })
   return { ok: true }
 })

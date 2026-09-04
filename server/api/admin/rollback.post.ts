@@ -4,7 +4,7 @@ import { auth } from '../../utils/auth'
 import { db } from '../../db/client'
 import { project, organization } from '../../db/schema'
 import { RollbackError, rollbackTo } from '../../services/state'
-import { recordAudit } from '../../services/audit'
+import { recordAuditBestEffort } from '../../services/audit'
 
 const bodySchema = z.object({ projectId: z.string().min(1), versionId: z.string().min(1) })
 
@@ -33,7 +33,9 @@ export default defineEventHandler(async (event) => {
       versionId: input.versionId,
       userId: session.user.id
     })
-    await recordAudit({
+    // The rollback version is already written; a 500 here would invite the
+    // operator to click again and write a third identical version.
+    await recordAuditBestEffort({
       orgId: target.orgId,
       projectId: input.projectId,
       actorType: 'user',

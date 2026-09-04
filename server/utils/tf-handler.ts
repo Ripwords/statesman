@@ -4,7 +4,7 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '../db/client'
 import { organization, project } from '../db/schema'
 import { acquireLock, releaseLock } from '../services/lock'
-import { recordAudit } from '../services/audit'
+import { recordAuditBestEffort } from '../services/audit'
 import { lockInfoSchema, type LockInfo } from '../../shared/schemas/lock'
 import { projectRefSchema, type ProjectRef } from '../../shared/schemas/project'
 import type { TfPrincipal } from './tf-auth'
@@ -92,7 +92,10 @@ export async function handleLockAcquire(
     setResponseStatus(event, 423)
     return result.held
   }
-  await recordAudit({
+  // The lock row is already committed. A 500 here would tell Terraform the
+  // lock was refused while it is in fact held, stranding the project behind a
+  // force-unlock.
+  await recordAuditBestEffort({
     orgId: resolved.orgId,
     projectId: resolved.id,
     actorType: 'api-key',
@@ -110,7 +113,7 @@ export async function handleLockRelease(
 ): Promise<{ ok: true }> {
   const info = await readLockInfo(event)
   const released = await releaseLock(resolved.id, info.ID)
-  await recordAudit({
+  await recordAuditBestEffort({
     orgId: resolved.orgId,
     projectId: resolved.id,
     actorType: 'api-key',

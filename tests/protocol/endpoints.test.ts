@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
 import { $fetch, setup, url as absoluteUrl } from '@nuxt/test-utils/e2e'
+import { eq } from 'drizzle-orm'
+import { Client } from 'pg'
 import { auth } from '../../server/utils/auth'
-import { acquireLock } from '../../server/services/lock'
+import { db } from '../../server/db/client'
+import { auditLog, organization } from '../../server/db/schema'
+import { acquireLock, currentLock } from '../../server/services/lock'
 import { seedProject, resetDb } from './helpers'
 
 await setup({ server: true })
@@ -62,7 +66,10 @@ beforeAll(async () => {
     body: JSON.stringify({ email, password: 'correct horse battery' })
   })
   await signIn.text()
-  sessionCookie = signIn.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+  sessionCookie = signIn.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ')
 })
 
 // This suite owns the 'acme' organization slug; see resetDb in ./helpers.
@@ -89,9 +96,17 @@ describe('terraform protocol', () => {
   })
 
   it('returns 423 with holder info when the lock is held', async () => {
-    await $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'a', Who: 'jj' } })
+    await $fetch(`${url}/lock`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: { ID: 'a', Who: 'jj' }
+    })
     await expect(
-      $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'b', Who: 'other' } })
+      $fetch(`${url}/lock`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: { ID: 'b', Who: 'other' }
+      })
     ).rejects.toMatchObject({ statusCode: 423, data: expect.objectContaining({ ID: 'a' }) })
   })
 
@@ -124,15 +139,15 @@ describe('terraform protocol', () => {
 
   it('returns 403 for a project outside the token scope', async () => {
     await seedProject('acme', 'staging')
-    await expect(
-      $fetch('/api/tf/acme/staging', { headers: authHeader() })
-    ).rejects.toMatchObject({ statusCode: 403 })
+    await expect($fetch('/api/tf/acme/staging', { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 403
+    })
   })
 
   it('returns 404 for an unknown project', async () => {
-    await expect(
-      $fetch('/api/tf/acme/nope', { headers: authHeader() })
-    ).rejects.toMatchObject({ statusCode: 404 })
+    await expect($fetch('/api/tf/acme/nope', { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 404
+    })
   })
 
   it('deletes state', async () => {
@@ -142,9 +157,9 @@ describe('terraform protocol', () => {
   })
 
   it('returns 401 for a key that does not exist', async () => {
-    await expect(
-      $fetch(url, { headers: basicHeader('sm_not_a_real_key') })
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect($fetch(url, { headers: basicHeader('sm_not_a_real_key') })).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('returns 403, not 401, for a valid key missing the action', async () => {
@@ -170,9 +185,9 @@ describe('terraform protocol', () => {
 
 describe('admin endpoints', () => {
   it('rejects an unauthenticated retention run', async () => {
-    await expect(
-      $fetch('/api/admin/retention', { method: 'POST' })
-    ).rejects.toMatchObject({ statusCode: 401 })
+    await expect($fetch('/api/admin/retention', { method: 'POST' })).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('rejects an unauthenticated rollback', async () => {
@@ -209,5 +224,98 @@ describe('admin endpoints', () => {
         body: { projectId, versionId: 'nope' }
       })
     ).rejects.toMatchObject({ statusCode: 409 })
+  })
+})
+
+/**
+ * The audit row is observability, not part of the transaction. Its insert runs
+ * AFTER the operation it describes has already been committed, so a failure
+ * there used to turn a successful write into a 500 — and Terraform answers a
+ * 500 by retrying, which writes the same state a second time and leaves a
+ * duplicate version in the history.
+ *
+ * The failure is injected at the database rather than mocked, because the
+ * handler runs in a separate server process and a mock in this one would prove
+ * nothing. The constraint is narrowed to this suite's organization id so the
+ * other suites sharing the database are untouched.
+ */
+describe('a failing audit write', () => {
+  let orgId: string
+  let audit: Client
+
+  async function withAuditBlocked(body: () => Promise<void>): Promise<void> {
+    // NOT VALID: enforce on new rows without validating the ones an earlier
+    // step in the same test already wrote.
+    await audit.query(
+      `ALTER TABLE audit_log ADD CONSTRAINT audit_write_probe` +
+        ` CHECK (org_id <> '${orgId}') NOT VALID`
+    )
+    try {
+      await body()
+    } finally {
+      await audit.query('ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_write_probe')
+    }
+  }
+
+  beforeEach(async () => {
+    const rows = await db()
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, 'acme'))
+    const found = rows[0]?.id
+    if (!found) throw new Error('the acme organization was not seeded')
+    // Interpolated into DDL, which cannot take a bind parameter. seedProject
+    // ids are ULIDs; checking the alphabet keeps that true.
+    if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(found)) {
+      throw new Error(`organization id is not a ULID and must not be inlined: ${found}`)
+    }
+    orgId = found
+
+    audit = new Client({ connectionString: process.env.DATABASE_URL })
+    await audit.connect()
+  })
+
+  afterEach(async () => {
+    await audit.end()
+  })
+
+  it('does not fail a state write that was already persisted', async () => {
+    await withAuditBlocked(async () => {
+      expect(
+        await $fetch(url, { method: 'POST', headers: authHeader(), body: state(7) })
+      ).toMatchObject({ ok: true })
+      expect(await $fetch(url, { headers: authHeader() })).toMatchObject({ serial: 7 })
+    })
+    // Proves the injection was real: had the constraint not bitten, the write
+    // would have left a state.write audit row and the assertions above would
+    // pass for the wrong reason.
+    const rows = await db().select().from(auditLog).where(eq(auditLog.orgId, orgId))
+    expect(rows.map((r) => r.action)).not.toContain('state.write')
+  })
+
+  it('does not fail a lock that was already acquired', async () => {
+    // The same shape with a worse ending: a 500 here tells Terraform the lock
+    // was refused while the row is in fact held, so the next run needs a
+    // force-unlock to make progress.
+    await withAuditBlocked(async () => {
+      expect(
+        await $fetch(`${url}/lock`, {
+          method: 'POST',
+          headers: authHeader(),
+          body: { ID: 'audit-probe', Who: 'jj@laptop' }
+        })
+      ).toMatchObject({ ok: true })
+      expect(await currentLock(projectId)).toMatchObject({ ID: 'audit-probe' })
+    })
+  })
+
+  it('does not fail a purge that already happened', async () => {
+    await $fetch(url, { method: 'POST', headers: authHeader(), body: state(1) })
+    await withAuditBlocked(async () => {
+      expect(await $fetch(url, { method: 'DELETE', headers: authHeader() })).toMatchObject({
+        ok: true
+      })
+    })
+    await expect($fetch(url, { headers: authHeader() })).rejects.toMatchObject({ statusCode: 404 })
   })
 })
