@@ -14,5 +14,14 @@ export default defineNuxtConfig({
       ]
     }
   },
+  nitro: {
+    // Nitro's scheduler exists only on a long-running preset; on Vercel the
+    // task is never invoked, which is why the task itself also checks and why
+    // docs/deploy-vercel.md documents the external trigger.
+    experimental: { tasks: true },
+    // Off-peak and off the hour, so a fleet of deployments does not all sweep
+    // their blob stores at 03:00 exactly.
+    scheduledTasks: { '17 3 * * *': ['retention'] }
+  },
   typescript: { strict: true, typeCheck: true }
 })

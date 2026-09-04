@@ -1,28 +1,12 @@
-import { auth } from '../../utils/auth'
-import { db } from '../../db/client'
-import { project } from '../../db/schema'
-import { runRetention } from '../../services/retention'
-import { mapWithConcurrency } from '../../utils/concurrency'
+import { runRetentionForAllProjects } from '../../services/retention'
+import { requireSession } from '../../utils/ui-auth'
 
 /**
- * Each sweep lists the whole storage prefix and issues its own deletes, so the
- * fan-out width here is the project count — data, not a constant. Four at a
- * time keeps the pass parallel enough to finish quickly on a large deployment
- * without letting the blob store or the Postgres pool see hundreds of
- * simultaneous callers.
+ * Runs retention on demand. The scheduled task in server/tasks/retention.ts
+ * runs the same function on a long-running server; this is the manual trigger,
+ * and the only one that exists on serverless.
  */
-const RETENTION_CONCURRENCY = 4
-
 export default defineEventHandler(async (event) => {
-  const session = await auth.api.getSession({ headers: event.headers })
-  if (!session) throw createError({ statusCode: 401, statusMessage: 'Sign in required' })
-
-  const projects = await db().select({ id: project.id }).from(project)
-  const results = await mapWithConcurrency(projects, RETENTION_CONCURRENCY, (p) =>
-    runRetention(p.id)
-  )
-  return {
-    prunedVersions: results.reduce((sum, r) => sum + r.prunedVersions, 0),
-    sweptBlobs: results.reduce((sum, r) => sum + r.sweptBlobs, 0)
-  }
+  await requireSession(event)
+  return runRetentionForAllProjects()
 })
