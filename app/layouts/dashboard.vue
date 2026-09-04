@@ -28,7 +28,7 @@ const accountItems: DropdownMenuItem[][] = [
       <div class="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
         <NuxtLink
           to="/"
-          class="flex shrink-0 items-center gap-2 rounded-md font-semibold tracking-tight transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="flex shrink-0 items-center gap-2 rounded-md font-semibold tracking-tight transition-[color] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <UIcon name="i-lucide-landmark" class="size-5 text-primary" aria-hidden="true" />
           <!-- Hidden visually on the narrowest screens so the single nav

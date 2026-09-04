@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { organization, project, projectState, stateLock, stateVersion } from '../../db/schema'
 import { requireSession } from '../../utils/ui-auth'
@@ -30,5 +30,7 @@ export default defineEventHandler(async (event) => {
     .leftJoin(projectState, eq(projectState.projectId, project.id))
     .leftJoin(stateVersion, eq(projectState.currentVersionId, stateVersion.id))
     .leftJoin(stateLock, eq(stateLock.projectId, project.id))
-    .orderBy(desc(projectState.updatedAt))
+    // NULLS LAST, so a project that exists but has never been written to sits
+    // at the bottom rather than the top of the list.
+    .orderBy(sql`${projectState.updatedAt} desc nulls last`)
 })
