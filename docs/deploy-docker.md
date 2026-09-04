@@ -115,8 +115,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 ```
 Created user: you@example.com
 Password: <printed once>
-Shown once. Sign in and change it, or store it in a password manager.
 ```
+
+The password is shown once and there is no password-change screen. Store it in
+a password manager. To rotate it, run `pnpm user:create` again with a different
+email and remove the old account, or call Better Auth's change-password
+endpoint directly.
 
 Pass `-e STATESMAN_USER_PASSWORD=…` to choose the password instead of having one
 generated. The command needs `DATABASE_URL` and `BETTER_AUTH_SECRET`, which the
