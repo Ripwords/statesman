@@ -2,10 +2,10 @@
 definePageMeta({ layout: 'dashboard' })
 useHead({ title: 'Tokens · statesman' })
 
-const { data: tokens, refresh } = await useFetch('/api/ui/tokens')
+const { data: tokens, error, refresh } = await useFetch('/api/ui/tokens')
 type TokenRow = NonNullable<typeof tokens.value>[number]
 
-const revealed = ref<{ id: string, key: string, name: string } | null>(null)
+const revealed = ref<{ id: string; key: string; name: string } | null>(null)
 const creating = ref(false)
 
 const pendingRevoke = ref<TokenRow | null>(null)
@@ -33,13 +33,14 @@ async function revoke() {
     notice.value = `Revoked ${token.name ?? 'the token'}. Any Terraform run using it will now fail to authenticate.`
     await refresh()
   } catch {
-    revokeError.value = 'Could not revoke the token. Check that you are still signed in, then try again.'
+    revokeError.value =
+      'Could not revoke the token. Check that you are still signed in, then try again.'
   } finally {
     revoking.value = false
   }
 }
 
-function onCreated(token: { id: string, key: string, name: string }) {
+function onCreated(token: { id: string; key: string; name: string }) {
   revealed.value = token
   creating.value = false
   notice.value = null
@@ -66,8 +67,22 @@ function onCreated(token: { id: string, key: string, name: string }) {
       />
     </div>
 
+    <div v-if="error" aria-live="polite">
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Could Not Load Tokens"
+        description="The server did not answer. This is a problem reaching statesman, not a sign that you have no tokens."
+      >
+        <template #actions>
+          <UButton color="error" variant="outline" label="Retry" @click="refresh()" />
+        </template>
+      </UAlert>
+    </div>
+
     <EmptyState
-      v-if="!tokens?.length"
+      v-else-if="!tokens?.length"
       icon="i-lucide-key-round"
       title="No Tokens Yet"
       description="Terraform authenticates with a token. Create one, then paste it into the password field of your backend block."
@@ -83,11 +98,13 @@ function onCreated(token: { id: string, key: string, name: string }) {
       >
         <span class="min-w-0 truncate font-medium">{{ t.name ?? 'Unnamed' }}</span>
         <code class="text-xs text-muted" translate="no">{{ t.start }}…</code>
-        <UBadge
-          :color="t.enabled ? 'success' : 'neutral'"
-          variant="subtle"
-          :label="t.enabled ? 'Active' : 'Disabled'"
-        />
+        <!--
+          The badge that was here read Active/Disabled from `apikey.enabled`, but
+          nothing in the product ever sets it to false: there is no toggle, only
+          revocation. Every token rendered "Active" forever and "Disabled" was
+          unreachable, so it stated a capability that does not exist. Revoking is
+          the kill switch, it is immediate, and it is the button on the right.
+        -->
         <span class="text-sm text-muted">{{ scopeLabel(t) }}</span>
         <span class="text-sm text-muted tabular">
           {{ t.rateLimitMax ?? 120 }}/{{ Math.round((t.rateLimitTimeWindow ?? 60_000) / 1000) }}s
@@ -108,11 +125,7 @@ function onCreated(token: { id: string, key: string, name: string }) {
 
     <!-- The slideover's own body is the scroll container, so the containment
          belongs on that slot rather than on a child of it. -->
-    <USlideover
-      v-model:open="creating"
-      title="New Token"
-      :ui="{ body: 'overscroll-contain' }"
-    >
+    <USlideover v-model:open="creating" title="New Token" :ui="{ body: 'overscroll-contain' }">
       <template #body>
         <TokenConfigurator @created="onCreated" />
       </template>
@@ -122,14 +135,18 @@ function onCreated(token: { id: string, key: string, name: string }) {
       :open="pendingRevoke !== null"
       title="Revoke This Token?"
       :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
-      @update:open="(value) => { if (!value) pendingRevoke = null }"
+      @update:open="
+        (value) => {
+          if (!value) pendingRevoke = null
+        }
+      "
     >
       <template #body>
         <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
-            Revoking {{ pendingRevoke?.name ?? 'this token' }} takes effect immediately and
-            cannot be undone. Any Terraform run still configured with it will fail to
-            authenticate on its next plan or apply.
+            Revoking {{ pendingRevoke?.name ?? 'this token' }} takes effect immediately and cannot
+            be undone. Any Terraform run still configured with it will fail to authenticate on its
+            next plan or apply.
           </p>
           <div aria-live="polite">
             <UAlert

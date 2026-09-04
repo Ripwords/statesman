@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
+import { FetchError } from 'ofetch'
 import { createProjectSchema, type CreateProjectInput } from '~~/shared/schemas/project'
 
 const props = defineProps<{
@@ -61,13 +62,13 @@ async function onSubmit(event: FormSubmitEvent<CreateProjectInput>) {
     })
     emit('created')
   } catch (error) {
-    // 409 is the common one and deserves its own sentence: "could not create"
-    // sends someone hunting for a fault that is not there.
-    const status = error instanceof Error && 'statusCode' in error ? error.statusCode : undefined
+    // The server's own statusMessage names the actual problem — a duplicate
+    // slug, an unknown organization, none seeded yet. Discarding it for
+    // "check that you are still signed in" sent people to fix the one thing
+    // that was not wrong.
+    const detail = error instanceof FetchError ? error.statusMessage : undefined
     formError.value =
-      status === 409
-        ? `A project named ${event.data.project} already exists here. Pick another name.`
-        : 'Could not create the project. Check that you are still signed in, then try again.'
+      detail ?? 'Could not create the project. Check that you are still signed in, then try again.'
   } finally {
     pending.value = false
   }

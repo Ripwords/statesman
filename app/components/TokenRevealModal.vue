@@ -62,14 +62,10 @@ const origin = useRequestURL().origin
 // projects, so this modal cannot know which one the reader means. The project
 // reveal fills them in for real. The block itself comes from the one builder
 // both share, so the verbs cannot drift apart.
-const snippet = computed(() =>
-  backendSnippet({
-    origin,
-    org: 'ORG',
-    project: 'PROJECT',
-    password: props.token?.key ?? ''
-  })
-)
+// No password line. The README tells operators to keep the token out of the
+// file and pass TF_HTTP_PASSWORD instead, and a snippet that pastes it in is an
+// invitation to commit it.
+const snippet = computed(() => backendSnippet({ origin, org: 'ORG', project: 'PROJECT' }))
 </script>
 
 <template>
@@ -121,6 +117,11 @@ const snippet = computed(() =>
 
         <div>
           <h3 class="mb-2 text-sm font-medium">Backend Configuration</h3>
+          <p class="mb-2 text-sm text-muted text-pretty">
+            Replace ORG and PROJECT, and pass the token as
+            <code class="text-xs" translate="no">TF_HTTP_PASSWORD</code> rather than writing it into
+            a file you commit.
+          </p>
           <pre
             class="overflow-x-auto rounded-lg bg-muted p-3 text-xs [overscroll-behavior-x:contain]"
             translate="no"

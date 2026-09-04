@@ -1,16 +1,17 @@
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
-import { auth } from '../../utils/auth'
 import { db } from '../../db/client'
 import { project, organization } from '../../db/schema'
 import { RollbackError, rollbackTo } from '../../services/state'
 import { recordAuditBestEffort } from '../../services/audit'
+import { requireSession } from '../../utils/ui-auth'
 
 const bodySchema = z.object({ projectId: z.string().min(1), versionId: z.string().min(1) })
 
 export default defineEventHandler(async (event) => {
-  const session = await auth.api.getSession({ headers: event.headers })
-  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Sign in required' })
+  // requireSession, not a second inline copy of it: the two had already drifted
+  // and the guard is the only thing between a stranger and every project.
+  const session = await requireSession(event)
 
   // 400 is the right status for a malformed body, so h3's rewrite of any
   // validator throw into "400 Validation Error" is exactly what we want here
@@ -31,7 +32,7 @@ export default defineEventHandler(async (event) => {
       orgSlug: target.orgSlug,
       projectSlug: target.projectSlug,
       versionId: input.versionId,
-      userId: session.user.id
+      userId: session.userId
     })
     // The rollback version is already written; a 500 here would invite the
     // operator to click again and write a third identical version.
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
       orgId: target.orgId,
       projectId: input.projectId,
       actorType: 'user',
-      actorId: session.user.id,
+      actorId: session.userId,
       action: 'state.rollback',
       meta: { from: input.versionId, to: result.versionId }
     })

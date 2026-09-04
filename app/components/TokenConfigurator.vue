@@ -2,7 +2,7 @@
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
 import { tokenConfigSchema, type StateAction, type TokenConfig } from '~~/shared/schemas/token'
 
-const emit = defineEmits<{ created: [{ id: string, key: string, name: string }] }>()
+const emit = defineEmits<{ created: [{ id: string; key: string; name: string }] }>()
 
 const { data: projects } = await useFetch('/api/ui/projects')
 
@@ -22,7 +22,9 @@ const scopeKind = computed<'all' | 'projects'>({
 
 const selectedProjects = computed<string[]>({
   get: () => (state.scope?.kind === 'projects' ? state.scope.projects : []),
-  set: (chosen) => { state.scope = { kind: 'projects', projects: chosen } }
+  set: (chosen) => {
+    state.scope = { kind: 'projects', projects: chosen }
+  }
 })
 
 /**
@@ -36,16 +38,21 @@ watch(limitRate, (on) => {
   state.rateLimitWindowSeconds = on ? 60 : undefined
 })
 
-const actionOptions: { label: string, value: StateAction, description: string }[] = [
+const actionOptions: { label: string; value: StateAction; description: string }[] = [
   { label: 'Read State', value: 'read', description: 'Required for terraform plan' },
   { label: 'Write State', value: 'write', description: 'Required for terraform apply' },
   { label: 'Lock State', value: 'lock', description: 'Required for any apply that locks' },
-  { label: 'Delete State', value: 'delete', description: 'Required for terraform destroy' }
+  // `terraform destroy` does NOT send DELETE: it writes an emptied state file,
+  // which is a write. DELETE on the base path is the purge operation, which the
+  // CLI never issues on its own.
+  {
+    label: 'Delete State',
+    value: 'delete',
+    description: 'Purges the state entirely; terraform destroy does not need it'
+  }
 ]
 
-const projectOptions = computed(() =>
-  (projects.value ?? []).map((p) => `${p.org}/${p.slug}`)
-)
+const projectOptions = computed(() => (projects.value ?? []).map((p) => `${p.org}/${p.slug}`))
 
 const pending = ref(false)
 const formError = ref<string | null>(null)
@@ -143,7 +150,10 @@ function onError(event: FormErrorEvent) {
       name="expiresInDays"
       description="Days, up to 365. Leave empty for a token that never expires."
     >
-      <UInputNumber v-model="state.expiresInDays" :min="1" :max="365" class="w-full" />
+      <!-- 3650 matches tokenConfigSchema and the plugin's keyExpiration
+           ceiling. It read 365 here, so the three disagreed and a value the
+           schema accepts was unreachable from the only UI that builds one. -->
+      <UInputNumber v-model="state.expiresInDays" :min="1" :max="3650" class="w-full" />
     </UFormField>
 
     <div class="space-y-3">
