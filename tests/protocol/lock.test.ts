@@ -4,11 +4,14 @@ import { seedProject, resetDb } from './helpers'
 
 const info = (id: string) => ({ ID: id, Who: 'jj@laptop', Operation: 'OperationTypeApply' })
 
+// This suite owns this organization slug; see resetDb in ./helpers.
+const ORG = 'lock-suite'
+
 let projectId: string
 
 beforeEach(async () => {
-  await resetDb()
-  projectId = await seedProject('acme', 'prod')
+  await resetDb(ORG)
+  projectId = await seedProject(ORG, 'prod')
 })
 
 describe('locking', () => {
