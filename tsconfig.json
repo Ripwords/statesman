@@ -13,6 +13,7 @@
     "server/**/*",
     "shared/**/*",
     "tests/**/*",
+    "scripts/**/*",
     "*.ts"
   ],
   "exclude": ["node_modules", ".output", ".nuxt/dist", "dist", ".data"]

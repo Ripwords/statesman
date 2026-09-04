@@ -1,3 +1,5 @@
+# Local development dependencies. The app itself runs on the host via
+# `pnpm dev`; only the things it talks to live here.
 services:
   postgres:
     image: postgres:17-alpine
@@ -13,6 +15,7 @@ services:
       timeout: 5s
       retries: 10
 
+  # Stands in for S3 so the s3 driver can be exercised without an AWS account.
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -21,6 +24,26 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     ports: ['9000:9000', '9001:9001']
     volumes: ['miniodata:/data']
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot. The s3 driver never creates its bucket — doing so at runtime
+  # would mean handing the app CreateBucket rights it has no other use for —
+  # so `STORAGE_DRIVER=s3` against a fresh MinIO would otherwise fail on the
+  # first write with NoSuchBucket.
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/statesman
+      "
+    restart: 'no'
 
 volumes:
   pgdata:

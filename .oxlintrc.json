@@ -30,7 +30,7 @@
   },
   "overrides": [
     {
-      "files": ["server/**/*.ts", "tests/**/*.ts"],
+      "files": ["server/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
       "rules": {
         "no-console": "off"
       }
