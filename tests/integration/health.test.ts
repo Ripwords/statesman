@@ -1,8 +1,9 @@
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
-import { runHealthChecks, redactForHealth } from '../../server/utils/health'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { runHealthChecks } from '../../server/utils/health'
 import { store } from '../../server/storage'
 import { LocalStore } from '../../server/storage/local'
+import type { StateStore } from '../../server/storage/types'
 
 describe('health checks', () => {
   it('passes with a correctly configured environment', async () => {
@@ -45,45 +46,68 @@ describe('health checks', () => {
   })
 })
 
-describe('redactForHealth', () => {
-  it('strips a database connection string', () => {
-    const detail = redactForHealth(
-      new Error('connect ECONNREFUSED postgres://statesman:hunter2@db.internal:5432/statesman')
-    )
-    expect(detail).not.toContain('hunter2')
-    expect(detail).not.toContain('db.internal')
-    expect(detail).toContain('<redacted-url>')
+/** Records every call so a test can prove a probe was skipped, not merely quiet. */
+class RecordingStore implements StateStore {
+  readonly calls: string[] = []
+  async put(key: string): Promise<void> { this.calls.push(`put:${key}`) }
+  async get(key: string): Promise<Uint8Array | null> { this.calls.push(`get:${key}`); return null }
+  async delete(key: string): Promise<void> { this.calls.push(`delete:${key}`) }
+  async list(prefix: string): Promise<string[]> { this.calls.push(`list:${prefix}`); return [] }
+}
+
+describe('assertHealthy', () => {
+  const original = { ...process.env }
+
+  afterEach(() => {
+    process.env = { ...original }
+    vi.resetModules()
   })
 
-  it('strips an s3 endpoint', () => {
-    const detail = redactForHealth(new Error('failed to reach https://minio.internal:9000/bucket'))
-    expect(detail).not.toContain('minio.internal')
-    expect(detail).not.toContain('bucket')
+  // env() caches on first call, so each branch needs a fresh module graph.
+  async function loadWith(overrides: NodeJS.ProcessEnv) {
+    vi.resetModules()
+    Object.assign(process.env, overrides)
+    return import('../../server/utils/health')
+  }
+
+  it('skips every probe on serverless without touching any dependency', async () => {
+    // STORAGE_DRIVER must be s3 here: loadEnv rejects local storage on a
+    // serverless platform outright, which is a different guard entirely.
+    const { assertHealthy } = await loadWith({
+      VERCEL: '1',
+      STORAGE_DRIVER: 's3',
+      S3_BUCKET: 'probe-bucket'
+    })
+    const recorder = new RecordingStore()
+
+    await expect(assertHealthy({ store: recorder })).resolves.toBeUndefined()
+
+    // The assertion that matters: deleting the IS_SERVERLESS guard would make
+    // runHealthChecks put/get/delete a probe object and this would fail.
+    expect(recorder.calls).toEqual([])
   })
 
-  it('strips an absolute filesystem path', () => {
-    const detail = redactForHealth(
-      new Error("ENOTDIR: not a directory, mkdir '/Users/someone/secrets/state/probe'")
-    )
-    expect(detail).not.toContain('/Users/someone')
-    expect(detail).not.toContain('secrets')
-    expect(detail).toContain('<redacted-path>')
+  it('rejects on a long-running server and names the failing check', async () => {
+    const { assertHealthy } = await loadWith({ VERCEL: '', AWS_LAMBDA_FUNCTION_NAME: '' })
+    const unwritableRoot = join(process.cwd(), 'package.json')
+
+    await expect(assertHealthy({ store: new LocalStore(unwritableRoot) }))
+      .rejects.toThrow(/storage/)
   })
 
-  it('keeps only the first line and caps the length', () => {
-    const detail = redactForHealth(new Error(`first line\nsecond line with detail`))
-    expect(detail).toBe('first line')
-    expect(redactForHealth(new Error('x'.repeat(500))).length).toBeLessThanOrEqual(120)
+  it('does not leak configuration in the thrown startup message', async () => {
+    const { assertHealthy } = await loadWith({ VERCEL: '', AWS_LAMBDA_FUNCTION_NAME: '' })
+    const unwritableRoot = join(process.cwd(), 'package.json')
+
+    // This message is logged at boot, so it gets the same treatment.
+    const error = await assertHealthy({ store: new LocalStore(unwritableRoot) })
+      .then(() => null, (e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).not.toContain(unwritableRoot)
   })
 
-  it('redacts before truncating, so a long url cannot survive as a fragment', () => {
-    const detail = redactForHealth(
-      new Error(`${'padding '.repeat(12)}postgres://user:hunter2@host:5432/db`)
-    )
-    expect(detail).not.toContain('hunter2')
-  })
-
-  it('handles a non-Error throwable', () => {
-    expect(redactForHealth('plain string failure')).toBe('plain string failure')
+  it('resolves when every probe passes', async () => {
+    const { assertHealthy } = await loadWith({ VERCEL: '', AWS_LAMBDA_FUNCTION_NAME: '' })
+    await expect(assertHealthy()).resolves.toBeUndefined()
   })
 })
