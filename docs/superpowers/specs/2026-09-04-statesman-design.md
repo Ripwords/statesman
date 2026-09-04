@@ -335,6 +335,55 @@ The current version is never pruned.
 
 ---
 
+## 10b. Startup validation
+
+The process validates itself at boot rather than discovering problems on the first
+request. Two tiers, because they fail for different reasons.
+
+### Tier 1 — configuration. Always fatal.
+
+`server/plugins/00.env.ts` runs `env()` at Nitro startup, which Zod-parses
+`process.env` against the full schema. A missing `STATESMAN_ENCRYPTION_KEY`, a key
+that is not 32 bytes, `STORAGE_DRIVER=s3` without a bucket, or `STORAGE_DRIVER=local`
+on a serverless platform all exit the process with code 1 before a port is bound.
+
+Configuration errors are deterministic: retrying changes nothing, and a server that
+accepts traffic it cannot serve is worse than one that never started.
+
+### Tier 2 — connectivity. Fatal only on a long-running server.
+
+Four probes, in order:
+
+1. **Encryption key round-trip** — `open(key, seal(key, probe)) === probe`. Catches a
+   corrupt or truncated key before it silently encrypts state that cannot be read back.
+2. **Database reachable** — `SELECT 1`.
+3. **Migrations applied** — the `organization` table exists. Catches a deploy that
+   skipped `drizzle-kit migrate`, which is otherwise a confusing runtime error on the
+   first dashboard load.
+4. **Blob store writable** — put, get, and delete a probe object under
+   `.statesman-healthcheck/<ulid>`. A read-only check would pass for credentials that
+   can list but not write, which is precisely the failure that appears at the first
+   `terraform apply` rather than at deploy time.
+
+**On a long-running server** (`IS_SERVERLESS === false`) a failed probe exits the
+process. The container dies loudly, the orchestrator reports it, and the deploy is
+visibly broken instead of quietly half-working.
+
+**On serverless** (`IS_SERVERLESS === true`) the probes are skipped entirely.
+Serverless functions cold-start constantly, and Neon scales to zero — a database
+round-trip on every cold start would add latency to every request path and convert a
+brief upstream blip into a hard outage. The `/api/health` endpoint still runs the same
+probes on demand, so the information remains available without gating startup.
+
+### `GET /api/health`
+
+Unauthenticated. Runs the Tier 2 probes and returns `200` with
+`{ status: 'ok', checks: { … } }`, or `503` with per-check detail when any fails.
+It reports check names and pass/fail only — never connection strings, bucket names,
+or key material, because it is reachable without credentials.
+
+Used by the Docker healthcheck and by load balancers.
+
 ## 11. Error responses
 
 | Condition | Status |
@@ -364,10 +413,24 @@ Zod 4.5 at every boundary:
 - Token configurator form input, with the same schema shared by client and
   server
 
-Zod is not applied to state file contents. State is an opaque blob defined by
-Terraform, and validating its shape would couple us to Terraform's internal
-format across versions. We read `serial` and `lineage` for display only, and
-tolerate their absence.
+Validation is bound to the read, never performed after it. Every handler uses h3's
+validated request utilities — `readValidatedBody`, `getValidatedQuery`,
+`getValidatedRouterParams` — each taking the Zod schema directly. Reading a
+boundary with `readBody` or `getQuery` and validating separately is not
+permitted: it makes skipping validation a silent omission rather than a visible
+one.
+
+Two consequences follow from h3's implementation:
+
+- `validateData` catches whatever a validator throws and re-raises it as
+  `400 Validation Error`. A handler that owes a different status per §11 — an
+  unknown project is 404, not 400 — wraps the call and rethrows. Throwing the
+  intended status from inside the validator does not work; it is swallowed.
+- Zod is not applied to state file contents. State is an opaque blob defined by
+  Terraform, and validating its shape would couple us to Terraform's internal
+  format across versions. The state body is read with `readRawBody`. We parse
+  `serial` and `lineage` opportunistically for display only, and tolerate their
+  absence.
 
 ---
 

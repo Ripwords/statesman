@@ -23,6 +23,20 @@
 - **Blob objects are immutable.** Never overwrite a `blob_key`; every write gets a fresh ULID.
 - **Write ordering is fixed:** blob `put` → `state_version` insert → `project_state` pointer update. An orphan blob is acceptable; a dangling pointer is data loss.
 - **Zod validates every boundary** (env, request bodies, form input). Zod never validates Terraform state file contents.
+- **Always use h3's validated request utils** — `readValidatedBody(event, schema.parse)`,
+  `getValidatedQuery(event, schema.parse)`, `getValidatedRouterParams(event, schema.parse)`.
+  Never `readBody` / `getQuery` / `getRouterParam` followed by a separate `.parse` or
+  `.safeParse`. The validated utils bind the schema to the read so a boundary cannot be
+  read without being validated.
+  Two rules ride with this:
+  1. **h3 rewrites every validator throw into a 400.** `validateData` catches whatever the
+     validator throws and re-raises `createError({ status: 400, statusMessage: 'Validation
+     Error' })`. A `createError({ statusCode: 404 })` thrown inside a validator is swallowed.
+     Where the spec demands a different status (§11: an unknown project is 404, not 400),
+     call the util inside a `try`/`catch` and rethrow the status the spec requires.
+  2. **The Terraform state body is the one exception.** It is read with `readRawBody` and
+     never passed through Zod — the document's shape belongs to Terraform, and validating
+     it would couple us to their internal format across versions. Do not "fix" this.
 - **Nuxt UI semantic colors only** — `primary`/`secondary`/`success`/`info`/`warning`/`error`/`neutral`. Never raw Tailwind palette colors in components.
 - **All frontend work is audited against the Web Interface Guidelines** (see Appendix A) before its task is considered done.
 - Exact versions above are floors; do not upgrade major versions.
@@ -1446,9 +1460,224 @@ git commit -m "feat: add nuxt ui base configuration and design tokens"
 
 ---
 
+### Task 0.8: Startup health checks
+
+Implements spec §10b. Tier 1 (config) already exists from the Phase 0 fix round; this
+task adds Tier 2 (connectivity) and the health endpoint.
+
+**Files:**
+- Create: `server/utils/health.ts`, `server/api/health.get.ts`
+- Modify: `server/plugins/00.env.ts`
+- Modify: `docker-compose.prod.yml` (add the app healthcheck — Task C3 creates the file; if it does not exist yet, note it for C3 instead)
+- Test: `tests/integration/health.test.ts`
+
+**Interfaces:**
+- Consumes: `env()`, `db()`, `store()`, `seal`/`open`
+- Produces:
+  ```ts
+  type CheckName = 'encryption' | 'database' | 'migrations' | 'storage'
+  type CheckResult = { name: CheckName; ok: boolean; detail?: string; ms: number }
+  async function runHealthChecks(): Promise<{ ok: boolean; checks: CheckResult[] }>
+  async function assertHealthy(): Promise<void>   // throws on a long-running server; no-op on serverless
+  ```
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// tests/integration/health.test.ts
+import { describe, it, expect } from 'vitest'
+import { runHealthChecks } from '../../server/utils/health'
+import { store } from '../../server/storage'
+
+describe('health checks', () => {
+  it('passes with a correctly configured environment', async () => {
+    const result = await runHealthChecks()
+    expect(result.checks.map((c) => c.name).sort())
+      .toEqual(['database', 'encryption', 'migrations', 'storage'])
+    expect(result.ok, JSON.stringify(result.checks)).toBe(true)
+  })
+
+  it('times every check', async () => {
+    const result = await runHealthChecks()
+    for (const check of result.checks) expect(check.ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it('leaves no probe object behind', async () => {
+    await runHealthChecks()
+    expect(await store().list('.statesman-healthcheck/')).toHaveLength(0)
+  })
+
+  it('reports a failing check by name without leaking configuration', async () => {
+    // Point storage at an unwritable location and confirm the failure is named,
+    // and that the detail does not contain the path, bucket or credentials.
+    const result = await runHealthChecksAgainst({ breakStorage: true })
+    const storage = result.checks.find((c) => c.name === 'storage')
+    expect(result.ok).toBe(false)
+    expect(storage?.ok).toBe(false)
+    expect(storage?.detail ?? '').not.toMatch(/secret|password|key|\/Users\//i)
+  })
+})
+```
+
+`runHealthChecksAgainst` is a test-only seam; implement it however keeps production
+code clean — an optional injected `StateStore` is the obvious shape. If injecting
+turns out to complicate the production signature, drop this fourth test and instead
+prove the same property with a direct unit test of the error-redaction helper. Say
+which you chose.
+
+- [ ] **Step 2: Run and confirm it fails**
+
+Run: `pnpm vitest run tests/integration/health.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement the checks**
+
+```ts
+// server/utils/health.ts
+import { randomBytes } from 'node:crypto'
+import { ulid } from 'ulid'
+import { sql } from 'drizzle-orm'
+import { db } from '../db/client'
+import { store } from '../storage'
+import { seal, open } from './crypto'
+import { env } from './env'
+
+export type CheckName = 'encryption' | 'database' | 'migrations' | 'storage'
+export type CheckResult = { name: CheckName; ok: boolean; detail?: string; ms: number }
+
+const PROBE_PREFIX = '.statesman-healthcheck/'
+
+// The health endpoint is unauthenticated, so a failure detail must never carry a
+// connection string, bucket name, filesystem path or key material.
+function redact(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.split('\n')[0]!.slice(0, 120).replace(/[a-z]+:\/\/[^\s]+/gi, '<redacted-url>')
+}
+
+async function timed(name: CheckName, fn: () => Promise<void>): Promise<CheckResult> {
+  const started = Date.now()
+  try {
+    await fn()
+    return { name, ok: true, ms: Date.now() - started }
+  } catch (error) {
+    return { name, ok: false, detail: redact(error), ms: Date.now() - started }
+  }
+}
+
+export async function runHealthChecks(): Promise<{ ok: boolean; checks: CheckResult[] }> {
+  const checks = [
+    await timed('encryption', async () => {
+      const probe = randomBytes(32)
+      const roundTripped = open(env().ENCRYPTION_KEY, seal(env().ENCRYPTION_KEY, probe))
+      if (!roundTripped.equals(probe)) throw new Error('encryption round-trip mismatch')
+    }),
+    await timed('database', async () => {
+      await db().execute(sql`select 1`)
+    }),
+    await timed('migrations', async () => {
+      const rows = await db().execute<{ present: boolean }>(
+        sql`select to_regclass('public.organization') is not null as present`
+      )
+      const present = (rows as unknown as { rows?: { present: boolean }[] }).rows?.[0]?.present
+        ?? (rows as unknown as { present: boolean }[])[0]?.present
+      if (!present) throw new Error('migrations have not been applied')
+    }),
+    await timed('storage', async () => {
+      // Put, get AND delete. A read-only probe passes for credentials that can
+      // list but not write — the exact failure that surfaces on the first apply
+      // rather than at deploy time.
+      const key = `${PROBE_PREFIX}${ulid()}`
+      const payload = randomBytes(16)
+      await store().put(key, payload)
+      const readBack = await store().get(key)
+      await store().delete(key)
+      if (!readBack || !Buffer.from(readBack).equals(payload)) {
+        throw new Error('storage round-trip mismatch')
+      }
+    })
+  ]
+  return { ok: checks.every((c) => c.ok), checks }
+}
+
+export async function assertHealthy(): Promise<void> {
+  // Serverless functions cold-start constantly and Neon scales to zero. Probing
+  // the database on every cold start would add latency to every request path and
+  // turn a brief upstream blip into a hard outage. /api/health still reports on
+  // demand.
+  if (env().IS_SERVERLESS) return
+
+  const result = await runHealthChecks()
+  if (result.ok) return
+
+  const failed = result.checks.filter((c) => !c.ok)
+  throw new Error(
+    `statesman startup checks failed:\n${failed.map((c) => `  - ${c.name}: ${c.detail}`).join('\n')}`
+  )
+}
+```
+
+`db().execute` result shapes differ between the `pg` and Neon drivers — one returns
+`{ rows }`, the other an array. The `migrations` check handles both. Verify against
+both drivers rather than trusting the shape above.
+
+- [ ] **Step 4: Wire it into startup**
+
+```ts
+// server/plugins/00.env.ts
+import { assertEnvironment } from '../utils/env-guard'
+import { assertHealthy } from '../utils/health'
+
+export default defineNitroPlugin(async () => {
+  // Tier 1: configuration. Deterministic, so always fatal.
+  assertEnvironment()
+  // Tier 2: connectivity. Fatal on a long-running server, skipped on serverless.
+  await assertHealthy()
+})
+```
+
+Keep the existing `assertEnvironment` export and its tests exactly as they are.
+
+- [ ] **Step 5: Add the endpoint**
+
+```ts
+// server/api/health.get.ts
+import { runHealthChecks } from '../utils/health'
+
+export default defineEventHandler(async (event) => {
+  const result = await runHealthChecks()
+  if (!result.ok) setResponseStatus(event, 503)
+  return { status: result.ok ? 'ok' : 'degraded', checks: result.checks }
+})
+```
+
+Unauthenticated by design — a load balancer cannot hold a session. It returns check
+names and pass/fail only.
+
+- [ ] **Step 6: Run tests and confirm they pass**
+
+Run: `pnpm vitest run tests/integration/health.test.ts`
+Then prove the startup path really fails, against the built server rather than a unit
+test — stop Postgres and confirm the process exits non-zero:
+
+```bash
+pnpm build
+docker compose stop postgres
+node .output/server/index.mjs; echo "EXIT=$?"    # expect non-zero, naming 'database'
+docker compose start postgres
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add server/utils/health.ts server/api/health.get.ts server/plugins/00.env.ts tests/integration/health.test.ts
+git commit -m "feat: add startup connectivity checks and health endpoint"
+```
+
+---
+
 ## Phase 0 exit gate
 
-All of these must hold before either lane starts:
+All of these must hold before either lane starts (Tasks 0.1 through 0.8):
 
 ```bash
 pnpm vitest run          # every Phase 0 test passes
@@ -2219,15 +2448,15 @@ import { projectRefSchema, type ProjectRef } from '../../shared/schemas/project'
 
 export type ResolvedProject = { id: string; orgId: string; ref: ProjectRef }
 
-export function refFromEvent(event: H3Event): ProjectRef {
-  const parsed = projectRefSchema.safeParse({
-    org: getRouterParam(event, 'org'),
-    project: getRouterParam(event, 'project')
-  })
-  if (!parsed.success) {
+export async function refFromEvent(event: H3Event): Promise<ProjectRef> {
+  try {
+    return await getValidatedRouterParams(event, projectRefSchema.parse)
+  } catch {
+    // h3 turns any validator throw into a 400. Spec §11 requires 404 for a project
+    // that cannot exist, so the status is restored here rather than inside the
+    // validator, where it would be swallowed.
     throw createError({ statusCode: 404, statusMessage: 'Unknown project' })
   }
-  return parsed.data
 }
 
 export async function resolveProject(ref: ProjectRef): Promise<ResolvedProject> {
@@ -2258,12 +2487,15 @@ const ACTION_FOR_METHOD: Record<string, StateAction> = {
   GET: 'read', POST: 'write', DELETE: 'delete', LOCK: 'lock', UNLOCK: 'lock'
 }
 
+// Terraform appends ?ID=<lock-id> to a write while a lock is held.
+const lockQuerySchema = z.object({ ID: z.string().min(1).optional() })
+
 export default defineEventHandler(async (event) => {
   const method = event.method.toUpperCase()
   const action = ACTION_FOR_METHOD[method]
   if (!action) throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })
 
-  const ref = refFromEvent(event)
+  const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
   const principal = await authorizeTf(event, ref, action)
 
@@ -2282,7 +2514,7 @@ export default defineEventHandler(async (event) => {
   if (method === 'POST') {
     const held = await currentLock(resolved.id)
     if (held) {
-      const supplied = getQuery(event).ID
+      const { ID: supplied } = await getValidatedQuery(event, lockQuerySchema.parse)
       if (supplied !== held.ID) {
         throw createError({
           statusCode: 409,
@@ -2318,18 +2550,17 @@ async function handleLockOnBase(
   resolved: { id: string },
   method: string
 ): Promise<{ ok: true }> {
-  const parsed = lockInfoSchema.safeParse(await readBody(event))
-  if (!parsed.success) {
-    throw createError({ statusCode: 400, statusMessage: 'Malformed lock info' })
-  }
+  // 400 is the correct status for a malformed lock body, so h3's default applies
+  // and no catch is needed here.
+  const info = await readValidatedBody(event, lockInfoSchema.parse)
   if (method === 'LOCK') {
-    const result = await acquireLock(resolved.id, parsed.data)
+    const result = await acquireLock(resolved.id, info)
     if (!result.ok) {
       throw createError({ statusCode: 423, statusMessage: 'Locked', data: result.held })
     }
     return { ok: true }
   }
-  await releaseLock(resolved.id, parsed.data.ID)
+  await releaseLock(resolved.id, info.ID)
   return { ok: true }
 }
 ```
@@ -2359,15 +2590,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })
   }
 
-  const ref = refFromEvent(event)
+  const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
   const principal = await authorizeTf(event, ref, 'lock')
 
-  const parsed = lockInfoSchema.safeParse(await readBody(event))
-  if (!parsed.success) {
-    throw createError({ statusCode: 400, statusMessage: 'Malformed lock info' })
-  }
-  const info = parsed.data
+  // 400 on a malformed body is exactly what the spec wants, so h3's default status
+  // is correct and the call needs no catch.
+  const info = await readValidatedBody(event, lockInfoSchema.parse)
 
   if (ACQUIRE.has(method)) {
     const result = await acquireLock(resolved.id, info)
@@ -2705,32 +2934,31 @@ export default defineEventHandler(async (event) => {
   const session = await auth.api.getSession({ headers: event.headers })
   if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Sign in required' })
 
-  const parsed = bodySchema.safeParse(await readBody(event))
-  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid request' })
+  const body = await readValidatedBody(event, bodySchema.parse)
 
   const rows = await db()
     .select({ orgId: project.orgId, orgSlug: organization.slug, projectSlug: project.slug })
     .from(project)
     .innerJoin(organization, eq(project.orgId, organization.id))
-    .where(eq(project.id, parsed.data.projectId))
+    .where(eq(project.id, body.projectId))
   const target = rows[0]
   if (!target) throw createError({ statusCode: 404, statusMessage: 'Unknown project' })
 
   try {
     const result = await rollbackTo({
-      projectId: parsed.data.projectId,
+      projectId: body.projectId,
       orgSlug: target.orgSlug,
       projectSlug: target.projectSlug,
-      versionId: parsed.data.versionId,
+      versionId: body.versionId,
       userId: session.user.id
     })
     await recordAudit({
       orgId: target.orgId,
-      projectId: parsed.data.projectId,
+      projectId: body.projectId,
       actorType: 'user',
       actorId: session.user.id,
       action: 'state.rollback',
-      meta: { from: parsed.data.versionId, to: result.versionId }
+      meta: { from: body.versionId, to: result.versionId }
     })
     return result
   } catch (error) {
@@ -3092,15 +3320,10 @@ import { tokenConfigSchema } from '../../../shared/schemas/token'
 
 export default defineEventHandler(async (event) => {
   const session = await requireSession(event)
-  const parsed = tokenConfigSchema.safeParse(await readBody(event))
-  if (!parsed.success) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid token configuration',
-      data: parsed.error.flatten()
-    })
-  }
-  const created = await auth.api.createApiKey({ body: toApiKeyBody(parsed.data, session.userId) })
+  // h3 raises a 400 carrying the Zod issues when this fails, which is what the
+  // configurator form needs to render field-level errors.
+  const config = await readValidatedBody(event, tokenConfigSchema.parse)
+  const created = await auth.api.createApiKey({ body: toApiKeyBody(config, session.userId) })
   // The raw key is returned once and never again.
   return { id: created.id, key: created.key, name: created.name }
 })
@@ -4670,6 +4893,12 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
     volumes: ['statedata:/data/state']
     ports: ['3000:3000']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
