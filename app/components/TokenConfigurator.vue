@@ -148,7 +148,7 @@ function onError(event: FormErrorEvent) {
     <UFormField
       label="Expires After"
       name="expiresInDays"
-      description="Days, up to 365. Leave empty for a token that never expires."
+      description="Days, up to 3650. Leave empty for a token that never expires."
     >
       <!-- 3650 matches tokenConfigSchema and the plugin's keyExpiration
            ceiling. It read 365 here, so the three disagreed and a value the

@@ -15,12 +15,15 @@ useHead({ title: () => `Diff · ${org.value}/${slug.value} · statesman` })
 // The timeline page resolves the project before it renders anything; this page
 // has to as well, or it will happily draw a diff under a breadcrumb pointing at
 // a project that does not exist. Shares the list's cache key, so it is free.
-const { data: projects } = await useFetch('/api/ui/projects')
+const { data: projects, error: projectsError } = await useFetch('/api/ui/projects')
 const project = computed(
   () => projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
 )
 
-if (import.meta.server && !project.value) {
+// A failed projects fetch is not a missing project. Without this guard a
+// database blip renders as a confident "Project Not Found", the same bug the
+// timeline page already guards against.
+if (import.meta.server && !project.value && !projectsError.value) {
   const event = useRequestEvent()
   if (event) setResponseStatus(event, 404)
 }
