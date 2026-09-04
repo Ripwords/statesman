@@ -54,3 +54,38 @@ describe('api keys', () => {
     expect(result.key?.metadata).toMatchObject({ projects: ['acme/prod', 'acme/staging'] })
   })
 })
+
+describe('rate limiting', () => {
+  it('enforces a per-key limit once it is exceeded', async () => {
+    const key = await auth.api.createApiKey({
+      body: {
+        userId,
+        name: 'throttled',
+        rateLimitEnabled: true,
+        rateLimitMax: 2,
+        rateLimitTimeWindow: 60_000
+      }
+    })
+
+    const outcomes: boolean[] = []
+    for (let i = 0; i < 4; i++) {
+      const result = await auth.api.verifyApiKey({ body: { key: key.key } })
+      outcomes.push(result.valid)
+    }
+
+    // The first calls are inside the window allowance, the later ones are not.
+    expect(outcomes[0]).toBe(true)
+    expect(outcomes.at(-1)).toBe(false)
+  })
+
+  it('does not throttle a key created without explicit limits', async () => {
+    const key = await auth.api.createApiKey({ body: { userId, name: 'unthrottled' } })
+
+    // Regression test for the plugin's own default of 10 requests per 24 hours,
+    // which would fail partway through a single terraform apply.
+    for (let i = 0; i < 12; i++) {
+      const result = await auth.api.verifyApiKey({ body: { key: key.key } })
+      expect(result.valid, `request ${i + 1} was rejected`).toBe(true)
+    }
+  })
+})

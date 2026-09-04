@@ -20,6 +20,33 @@ const encryptionKey = z
     return buf
   })
 
+/**
+ * Environment variables are always strings, so z.coerce.boolean() is actively
+ * wrong here: Boolean('false') is true, and the only way to get false would be
+ * to unset the variable. An operator moving from MinIO to real AWS writes
+ * `S3_FORCE_PATH_STYLE=false` and would silently keep path-style URLs.
+ *
+ * An empty value is treated as unset — `FOO=` in a .env file means "I left this
+ * blank", not "false".
+ */
+function envBool(name: string, defaultValue: boolean) {
+  return z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      if (raw === undefined || raw === '') return defaultValue
+      const parsed = z.stringbool().safeParse(raw)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${name} must be one of true/false/1/0/yes/no, got "${raw}"`
+        })
+        return z.NEVER
+      }
+      return parsed.data
+    })
+}
+
 const schema = z
   .object({
     DATABASE_URL: z.string().min(1),
@@ -30,7 +57,7 @@ const schema = z
     S3_BUCKET: z.string().optional(),
     S3_ENDPOINT: z.string().optional(),
     S3_REGION: z.string().default('us-east-1'),
-    S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
+    S3_FORCE_PATH_STYLE: envBool('S3_FORCE_PATH_STYLE', false),
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
     BETTER_AUTH_SECRET: z.string().min(32),
@@ -41,7 +68,9 @@ const schema = z
     AWS_LAMBDA_FUNCTION_NAME: z.string().optional()
   })
   .superRefine((v, ctx) => {
-    const serverless = Boolean(v.VERCEL ?? v.AWS_LAMBDA_FUNCTION_NAME)
+    // `||` not `??`: VERCEL='' is defined but falsy, and `??` would stop there
+    // and never consult AWS_LAMBDA_FUNCTION_NAME.
+    const serverless = Boolean(v.VERCEL || v.AWS_LAMBDA_FUNCTION_NAME)
     if (v.STORAGE_DRIVER === 'local' && serverless) {
       ctx.addIssue({
         code: 'custom',
@@ -98,7 +127,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     BETTER_AUTH_URL: v.BETTER_AUTH_URL,
     RETENTION_KEEP_VERSIONS: v.RETENTION_KEEP_VERSIONS,
     RETENTION_KEEP_DAYS: v.RETENTION_KEEP_DAYS,
-    IS_SERVERLESS: Boolean(v.VERCEL ?? v.AWS_LAMBDA_FUNCTION_NAME)
+    IS_SERVERLESS: Boolean(v.VERCEL || v.AWS_LAMBDA_FUNCTION_NAME)
   }
 }
 

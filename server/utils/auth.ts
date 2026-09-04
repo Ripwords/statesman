@@ -16,11 +16,23 @@ export const auth = betterAuth({
       // Project scope rides in metadata; the plugin has no resource-instance
       // model of its own (spec §4, "Known gap").
       enableMetadata: true,
-      // The plugin's own default is 10 requests per 24 hours, which would
-      // throttle a single `terraform apply` into failure. Rate limiting is a
-      // per-token control in the configurator, so it is off by default here
-      // and switched on per key when the operator asks for it.
-      rateLimit: { enabled: false },
+      // Rate limiting must stay ENABLED globally. The plugin's gate reads
+      // `opts.rateLimit.enabled === false` and returns early, before it ever
+      // looks at the per-key `rateLimitEnabled` column — the relationship is
+      // AND, not OR, so a global `false` makes every per-key limit dead. It
+      // also persists that false onto each key at creation time, so
+      // requestCount would never increment either.
+      //
+      // The numbers are raised instead. One `terraform apply` costs roughly
+      // 4-6 requests (LOCK, GET, POST, UNLOCK) and a `plan` about 3, so 120
+      // per minute absorbs a CI fan-out of ~20 concurrent workspaces sharing
+      // one token while still capping abuse. The plugin's own default of 10
+      // per 24 hours would fail partway through a single apply.
+      rateLimit: {
+        enabled: true,
+        timeWindow: 60_000,
+        maxRequests: 120
+      },
       permissions: { defaultPermissions: { state: ['read'] } }
     })
   ]

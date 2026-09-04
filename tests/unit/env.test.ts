@@ -40,3 +40,57 @@ describe('loadEnv', () => {
     expect(() => loadEnv(bad as NodeJS.ProcessEnv)).toThrow(/S3_BUCKET/)
   })
 })
+
+describe('S3_FORCE_PATH_STYLE', () => {
+  it('reads "false" as false', () => {
+    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'false' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
+      .toBe(false)
+  })
+
+  it('reads "0" as false', () => {
+    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: '0' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
+      .toBe(false)
+  })
+
+  it('reads "true" as true', () => {
+    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'true' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
+      .toBe(true)
+  })
+
+  it('treats an empty value as unset and uses the default', () => {
+    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: '' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
+      .toBe(false)
+  })
+
+  it('rejects a value that is not a boolean', () => {
+    expect(() => loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'maybe' } as NodeJS.ProcessEnv))
+      .toThrow(/S3_FORCE_PATH_STYLE/)
+  })
+})
+
+describe('serverless detection', () => {
+  it('detects a lambda even when VERCEL is present but empty', () => {
+    const bad = {
+      ...base,
+      STORAGE_DRIVER: 'local',
+      VERCEL: '',
+      AWS_LAMBDA_FUNCTION_NAME: 'my-fn'
+    }
+    expect(() => loadEnv(bad as NodeJS.ProcessEnv)).toThrow(/ephemeral/i)
+  })
+
+  it('reports IS_SERVERLESS when only a lambda name is set', () => {
+    const env = loadEnv({
+      ...base,
+      STORAGE_DRIVER: 's3',
+      S3_BUCKET: 'b',
+      VERCEL: '',
+      AWS_LAMBDA_FUNCTION_NAME: 'my-fn'
+    } as NodeJS.ProcessEnv)
+    expect(env.IS_SERVERLESS).toBe(true)
+  })
+
+  it('is not serverless on a plain node host', () => {
+    expect(loadEnv({ ...base } as NodeJS.ProcessEnv).IS_SERVERLESS).toBe(false)
+  })
+})

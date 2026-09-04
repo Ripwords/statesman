@@ -11,5 +11,10 @@ if (existsSync('.env')) {
 // function it actually is back up.
 const globals = globalThis as typeof globalThis & {
   defineAppConfig?: <T>(config: T) => T
+  defineNitroPlugin?: <T>(plugin: T) => T
 }
 globals.defineAppConfig ??= (config) => config
+
+// Same story for server/plugins/**: defineNitroPlugin is a Nitro auto-import
+// and is likewise the identity function.
+globals.defineNitroPlugin ??= (plugin) => plugin
