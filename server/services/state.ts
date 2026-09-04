@@ -4,6 +4,7 @@ import { eq, desc } from 'drizzle-orm'
 import { db } from '../db/client'
 import { stateVersion, projectState } from '../db/schema'
 import { store } from '../storage'
+import { currentLock } from './lock'
 import { seal, open } from '../utils/crypto'
 import { env } from '../utils/env'
 
@@ -102,4 +103,31 @@ export async function listVersions(projectId: string, limit = 100): Promise<Stat
     .where(eq(stateVersion.projectId, projectId))
     .orderBy(desc(stateVersion.createdAt))
     .limit(limit)
+}
+
+export async function rollbackTo(args: {
+  projectId: string
+  orgSlug: string
+  projectSlug: string
+  versionId: string
+  userId: string
+}): Promise<{ versionId: string }> {
+  // Rolling back under an active lock would race a running apply.
+  const held = await currentLock(args.projectId)
+  if (held) {
+    throw new Error(`State is locked by ${held.Who ?? 'another process'}; release it first`)
+  }
+
+  const body = await readVersion(args.versionId)
+  if (!body) throw new Error(`Version not found: ${args.versionId}`)
+
+  // A new version carrying old bytes. History is append-only (spec §10), so a
+  // rollback is itself a recorded event rather than an erasure of one.
+  return writeState({
+    projectId: args.projectId,
+    orgSlug: args.orgSlug,
+    projectSlug: args.projectSlug,
+    body,
+    userId: args.userId
+  })
 }
