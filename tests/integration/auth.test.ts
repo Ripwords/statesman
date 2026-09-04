@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { auth } from '../../server/utils/auth'
+import { provisionUser } from '../protocol/helpers'
 
 let userId: string
 
 describe('api keys', () => {
   beforeAll(async () => {
-    const created = await auth.api.signUpEmail({
-      body: { email: `t${Date.now()}@example.com`, password: 'correct horse battery', name: 'T' }
-    })
-    userId = created.user.id
+    // Through the operator path: the server sets disableSignUp, which refuses
+    // server-side signUpEmail calls too.
+    const created = await provisionUser(`t${Date.now()}@example.com`, 'correct horse battery')
+    userId = created.id
   })
 
   it('verifies a freshly created key', async () => {
@@ -91,5 +92,22 @@ describe('rate limiting', () => {
       const result = await auth.api.verifyApiKey({ body: { key: key.key } })
       expect(result.valid, `request ${i + 1} was rejected`).toBe(true)
     }
+  })
+})
+
+describe('public sign-up', () => {
+  it('is refused, even through the server-side api', async () => {
+    // The whole authorization model rests on this: every authenticated user can
+    // read every project's decrypted state (spec §5, single organization), so
+    // an open sign-up endpoint is an open door to production secrets.
+    await expect(
+      auth.api.signUpEmail({
+        body: {
+          email: `stranger${Date.now()}@example.com`,
+          password: 'correct horse battery',
+          name: 'S'
+        }
+      })
+    ).rejects.toThrow(/sign up is not enabled/i)
   })
 })

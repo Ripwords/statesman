@@ -44,6 +44,11 @@ export function parseBasicAuth(header: string | undefined): string | null {
  * `acme/prod-2`.
  */
 export function scopeAllows(scope: TokenScope, org: string, project: string): boolean {
+  // `all` means every project in the deployment, and says so. It is not
+  // narrowed to the owning user, because there is nothing to narrow it to: one
+  // deployment serves one organization (spec §5) and every account can already
+  // reach every project. Spec §4 used to claim otherwise; the wording was the
+  // error, not this line.
   if (scope.kind === 'all') return true
   return scope.projects.includes(`${org}/${project}`)
 }

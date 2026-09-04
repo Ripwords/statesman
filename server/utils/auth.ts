@@ -9,7 +9,13 @@ export const auth = betterAuth({
   secret: env().BETTER_AUTH_SECRET,
   baseURL: env().BETTER_AUTH_URL,
   database: drizzleAdapter(db(), { provider: 'pg', schema }),
-  emailAndPassword: { enabled: true },
+  // Sign-in only. Public sign-up on a self-hosted deployment is an open door:
+  // spec §5 gives one organization per deployment and every authenticated user
+  // can read every project's decrypted state, so "anyone can create an account"
+  // and "anyone can read your production secrets" are the same sentence.
+  // Accounts are created by the operator with `pnpm user:create`, which needs
+  // database access and the auth secret.
+  emailAndPassword: { enabled: true, disableSignUp: true },
   plugins: [
     apiKey({
       defaultPrefix: 'sm_',
@@ -33,10 +39,11 @@ export const auth = betterAuth({
         timeWindow: 60_000,
         maxRequests: 120
       },
-      // The plugin's own default ceiling is 365 days, but tokenConfigSchema
-      // promises up to 3650 and the configurator offers it. Left at the default,
-      // any request above a year returned a server-side 400 that the form could
-      // not explain. Stated explicitly so the two cannot drift apart again.
+      // One ceiling, stated in three places that must agree: here,
+      // tokenConfigSchema.expiresInDays.max, and the configurator's input. The
+      // plugin's own default is 365 days, so left alone it rejected values the
+      // schema accepts with a server-side 400 the form could not explain. (The
+      // configurator's input said 365 until this review; it now says 3650 too.)
       keyExpiration: { maxExpiresIn: 3650 },
       permissions: { defaultPermissions: { state: ['read'] } }
     })

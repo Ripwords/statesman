@@ -6,7 +6,7 @@ import { auth } from '../../server/utils/auth'
 import { db } from '../../server/db/client'
 import { auditLog, organization } from '../../server/db/schema'
 import { acquireLock, currentLock } from '../../server/services/lock'
-import { seedProject, resetDb } from './helpers'
+import { seedProject, resetDb, provisionUser } from './helpers'
 
 await setup({ server: true })
 
@@ -33,12 +33,10 @@ const lockVerb = (method: string, id: string): Promise<Response> =>
 
 beforeAll(async () => {
   const email = `e2e${Date.now()}@example.com`
-  const user = await auth.api.signUpEmail({
-    body: { email, password: 'correct horse battery', name: 'E' }
-  })
+  const user = await provisionUser(email, 'correct horse battery')
   const key = await auth.api.createApiKey({
     body: {
-      userId: user.user.id,
+      userId: user.id,
       name: 'e2e',
       permissions: { state: ['read', 'write', 'delete', 'lock'] },
       metadata: { scope: { kind: 'projects', projects: ['acme/prod'] } }
@@ -50,7 +48,7 @@ beforeAll(async () => {
   // 401 (bad credential) and 403 (good credential, forbidden action).
   const readOnly = await auth.api.createApiKey({
     body: {
-      userId: user.user.id,
+      userId: user.id,
       name: 'e2e-readonly',
       permissions: { state: ['read'] },
       metadata: { scope: { kind: 'projects', projects: ['acme/prod'] } }
@@ -392,5 +390,59 @@ describe('project creation', () => {
     )
     const rows = await db().select().from(auditLog).where(eq(auditLog.projectId, created.id))
     expect(rows.map((r) => r.action)).toContain('project.create')
+  })
+})
+
+describe('lock visibility and release', () => {
+  it('reports a lock whose client sent no Who', async () => {
+    // Every LockInfo field but ID is optional, so this is a supported client.
+    // The dashboard gated its badge, its banner and its Force Unlock button on
+    // `lockedBy`, so a lock like this was held and completely invisible.
+    await $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'quiet' } })
+
+    const list = await $fetch('/api/ui/projects', { headers: { cookie: sessionCookie } })
+    const row = list.find((p) => p.org === 'acme' && p.slug === 'prod')
+    expect(row?.lockedBy).toBeNull()
+    expect(row?.lockedAt).not.toBeNull()
+  })
+
+  it('answers 409 and keeps the lock when the release id does not match', async () => {
+    // `terraform force-unlock <wrong-id>` used to print success and do nothing.
+    await $fetch(`${url}/lock`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: { ID: 'real', Who: 'jj' }
+    })
+
+    await expect(
+      $fetch(`${url}/lock`, { method: 'DELETE', headers: authHeader(), body: { ID: 'wrong' } })
+    ).rejects.toMatchObject({ statusCode: 409, data: expect.objectContaining({ ID: 'real' }) })
+
+    // Still held, so a second acquire still conflicts.
+    await expect(
+      $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'other' } })
+    ).rejects.toMatchObject({ statusCode: 423 })
+  })
+
+  it('answers 200 when there is nothing to release', async () => {
+    // Terraform sends UNLOCK at the end of an apply that worked. If someone
+    // force-unlocked in the meantime, failing here would fail a good run.
+    expect(
+      await $fetch(`${url}/lock`, { method: 'DELETE', headers: authHeader(), body: { ID: 'gone' } })
+    ).toMatchObject({ ok: true })
+  })
+})
+
+describe('health endpoint', () => {
+  it('answers a HEAD probe rather than redirecting it', async () => {
+    // Uptime monitors default to HEAD. A GET-only route let it fall through to
+    // the SPA catch-all, which answered 302 to /login.
+    const response = await fetch(absoluteUrl('/api/health'), { method: 'HEAD' })
+    expect(response.status).toBe(200)
+  })
+
+  it('still answers GET', async () => {
+    const response = await fetch(absoluteUrl('/api/health'))
+    expect(response.status).toBe(200)
   })
 })

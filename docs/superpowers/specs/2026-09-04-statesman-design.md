@@ -126,6 +126,30 @@ These are genuinely different mechanisms and the design treats them as such.
 | Human | Better Auth session cookie | Web UI, token management |
 | Terraform CLI | API key in Basic Auth password field | `/api/tf/*` |
 
+### Who may hold an account, and what an account can see
+
+**There is no public sign-up.** `emailAndPassword.disableSignUp` is set, so
+`POST /api/auth/sign-up/email` is refused — including through the server-side
+API. Accounts are created by the operator with `pnpm user:create`, which needs
+database access and `BETTER_AUTH_SECRET`.
+
+That control is load-bearing, because **every authenticated user can see every
+project**: the project list, the version timeline, the decrypted diff, force
+unlock, rollback, and token creation are all guarded by "is there a session",
+nothing finer. There is no per-user ACL, no roles, and no ownership.
+
+This is deliberate rather than unfinished. One deployment serves one
+organization (§5), so the set of accounts *is* the set of people trusted with
+that organization's state — which is how a self-hosted team tool should behave,
+and it keeps the authorization surface small enough to reason about. It is only
+safe while account creation is closed, which is why the two decisions belong in
+the same section.
+
+**The consequence an operator must know:** creating an account grants read
+access to the plaintext of every state file in the deployment, including the
+provider credentials and database passwords inside them. Do not create accounts
+for people who should see only some projects; run a second deployment instead.
+
 They meet at Better Auth's **API Key plugin**, which provides
 `auth.api.verifyApiKey({ key, permissions })` — a server-side call that accepts
 a raw key string. The Terraform request handler decodes the `Authorization:
@@ -145,14 +169,22 @@ The UI exposes a builder mapping onto plugin fields:
 | Project scope | `metadata: { scope: TokenScope }` |
 | Expiry | `expiresIn` |
 | Rate limit | `rateLimitMax`, `rateLimitTimeWindow` |
-| Kill switch | `enabled` |
+
+Revocation is deletion, and it takes effect on the next request. The plugin's
+`enabled` column would allow a reversible disable, but nothing sets it and no UI
+offers it, so it is not claimed as a feature.
 
 Two presets are offered, both producing the same token shape:
 
 - **Scoped** (recommended, default) —
   `metadata.scope = { kind: 'projects', projects: ['acme/myapp-prod'] }`
-- **Account-wide** — `metadata.scope = { kind: 'all' }`, limited to projects the
-  owning user can access
+- **Account-wide** — `metadata.scope = { kind: 'all' }`, which is every project
+  in the deployment. An earlier draft said "limited to projects the owning user
+  can access", which implied a per-user ACL that does not exist: `scopeAllows`
+  returns true unconditionally for this scope, and under one organization per
+  deployment every user can reach every project anyway. The wording is corrected
+  rather than the behaviour, because the behaviour is the intended model — see
+  "Who may hold an account" above.
 
 `TokenScope` is a discriminated union defined once in `shared/schemas/token.ts`
 and imported by both the configurator and the guard. An earlier draft of this

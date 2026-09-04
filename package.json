@@ -22,6 +22,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
+    "user:create": "tsx scripts/user-create.ts",
     "gen:key": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "prepare": "husky",
     "dev:setup": "docker compose up -d --wait postgres minio && docker compose run --rm createbucket && pnpm db:migrate && pnpm db:seed"
@@ -54,6 +55,9 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.11",
     "vue-tsc": "^3.3.11"
+  },
+  "engines": {
+    "node": ">=24.11.0"
   },
   "packageManager": "pnpm@11.25.0"
 }

@@ -11,6 +11,7 @@ import {
   user
 } from '../../server/db/schema'
 import { store } from '../../server/storage'
+import { provisioning, provisioningConfig } from '../../scripts/provision'
 
 /**
  * Vitest runs test FILES in parallel against one database and one blob root,
@@ -99,4 +100,24 @@ export async function seedUser(id: string): Promise<string> {
     .values({ id, name: id, email: `${id}@statesman.test` })
     .onConflictDoNothing({ target: user.id })
   return id
+}
+
+/**
+ * Creates a sign-in-able account the way an operator does.
+ *
+ * `auth.api.signUpEmail` is not an option any more: the server sets
+ * `disableSignUp`, and it refuses server-side calls too — verified, not assumed.
+ * Going through the same module `pnpm user:create` uses means these suites
+ * exercise the real provisioning path rather than a door only tests can open.
+ */
+export async function provisionUser(
+  email: string,
+  password: string
+): Promise<{ id: string; email: string }> {
+  const admin = provisioning(provisioningConfig())
+  try {
+    return await admin.createUser({ email, password, name: 'Test' })
+  } finally {
+    await admin.close()
+  }
 }

@@ -8,7 +8,7 @@ import { $fetch, url as absoluteUrl, useTestContext } from '@nuxt/test-utils/e2e
 import { auth } from '../../server/utils/auth'
 import type { StateStore } from '../../server/storage/types'
 import { listVersions } from '../../server/services/state'
-import { seedOrg, resetDb } from '../protocol/helpers'
+import { seedOrg, resetDb, provisionUser } from '../protocol/helpers'
 
 const FIXTURE = fileURLToPath(new URL('fixture', import.meta.url))
 const PROJECT = 'prod'
@@ -133,9 +133,10 @@ export function terraformAcceptance(options: ScenarioOptions): void {
 
       const email = `tf-${options.driver}-${Date.now()}@example.com`
       const password = 'correct horse battery'
-      const user = await auth.api.signUpEmail({
-        body: { email, password, name: 'Terraform acceptance' }
-      })
+      // Created through the operator path, because the server refuses public
+      // sign-up. This also proves an operator-provisioned account can sign in
+      // against the running server, which is the whole point of the split.
+      const user = await provisionUser(email, password)
 
       // A real browser session, taken over HTTP, because that is what guards
       // the create endpoint.
@@ -160,7 +161,7 @@ export function terraformAcceptance(options: ScenarioOptions): void {
 
       const key = await auth.api.createApiKey({
         body: {
-          userId: user.user.id,
+          userId: user.id,
           name: `terraform-e2e-${options.driver}`,
           permissions: { state: ['read', 'write', 'delete', 'lock'] },
           metadata: { scope: { kind: 'projects', projects: [`${options.org}/${PROJECT}`] } }
