@@ -1,4 +1,4 @@
-export type DiffLine = { kind: 'add' | 'remove' | 'same', path: string, value: string }
+export type DiffLine = { kind: 'add' | 'remove' | 'same'; path: string; value: string }
 
 /**
  * Flattens a document to leaf paths. An empty object or array is recorded as a
@@ -35,7 +35,7 @@ function flatten(
 export function diffJson(a: unknown, b: unknown): DiffLine[] {
   const left = flatten(a)
   const right = flatten(b)
-  const paths = [...new Set([...left.keys(), ...right.keys()])].sort()
+  const paths = [...new Set([...left.keys(), ...right.keys()])].toSorted()
 
   const lines: DiffLine[] = []
   for (const path of paths) {

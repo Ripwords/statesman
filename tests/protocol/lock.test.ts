@@ -22,8 +22,10 @@ describe('locking', () => {
   it('refuses a held lock and reports the holder', async () => {
     await acquireLock(projectId, info('lock-1'))
     const result = await acquireLock(projectId, info('lock-2'))
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.held.ID).toBe('lock-1')
+    // One unconditional assertion rather than a narrowing `if`: a conditional
+    // expect passes silently when the condition is false, which here would mean
+    // an acquired lock going unnoticed.
+    expect(result).toMatchObject({ ok: false, held: { ID: 'lock-1' } })
   })
 
   it('gives the lock to exactly one of many concurrent callers', async () => {
