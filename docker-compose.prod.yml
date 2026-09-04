@@ -1,0 +1,89 @@
+# Self-hosted production. `docker compose -f docker-compose.prod.yml up -d`.
+#
+# Every `:?` below fails the deployment at startup when a secret is missing,
+# rather than starting an app that cannot work. STATESMAN_ENCRYPTION_KEY in
+# particular has no safe default: a generated-on-boot key would encrypt state
+# that the next container could not read.
+#
+# DATABASE_URL defaults to the postgres service below, built from
+# POSTGRES_PASSWORD, so the password is written once. Set DATABASE_URL
+# explicitly to point at a managed database instead; the postgres service can
+# then be removed.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-statesman}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-statesman}
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-statesman}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No published ports: the database is reachable only on the compose network.
+    restart: unless-stopped
+
+  # Runs from the build stage, which is where drizzle-kit, drizzle.config.ts and
+  # the SQL files live. The runtime image deliberately carries none of them.
+  migrate:
+    build:
+      context: .
+      target: build
+    command: ['pnpm', 'db:migrate']
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-statesman}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-statesman}}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+
+  app:
+    build:
+      context: .
+      target: runtime
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-statesman}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-statesman}}
+      # A long-lived Node process, so the pg Pool, never the Neon HTTP driver.
+      DB_DRIVER: node
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      LOCAL_STORAGE_PATH: /data/state
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      STATESMAN_ENCRYPTION_KEY: ${STATESMAN_ENCRYPTION_KEY:?STATESMAN_ENCRYPTION_KEY is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+      RETENTION_KEEP_VERSIONS: ${RETENTION_KEEP_VERSIONS:-100}
+      RETENTION_KEEP_DAYS: ${RETENTION_KEEP_DAYS:-30}
+    # Only used by STORAGE_DRIVER=local. Harmless with the s3 driver, and it
+    # means switching drivers does not also mean editing the volume list.
+    volumes: ['statedata:/data/state']
+    ports: ['${PORT:-3000}:3000']
+    healthcheck:
+      # /api/health runs the same probes the boot check does — encryption
+      # round-trip, database, migrations applied, blob store writable — so an
+      # app that is listening but cannot store state reports unhealthy rather
+      # than accepting a terraform apply it will fail.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  statedata:
