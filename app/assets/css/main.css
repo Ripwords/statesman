@@ -5,6 +5,32 @@
   color-scheme: light dark;
 }
 
+/* An explicit theme choice must win over the OS preference, or native chrome —
+   scrollbars, autofill, form controls — renders light while the page is dark. */
+:root.dark {
+  color-scheme: dark;
+}
+
+:root.light {
+  color-scheme: light;
+}
+
+/* Nuxt UI pairs `outline-primary/25` with `focus-visible:outline-3`, so every
+   focus ring it paints lands at 25% opacity: measured 1.39:1 in light and
+   1.31:1 in dark, against WCAG 1.4.11's 3:1 minimum for non-text UI. That
+   affects nav links, breadcrumbs, switches, and the revoke and rollback
+   buttons, while hand-written rings elsewhere in the app use full opacity and
+   pass — so the app is inconsistent with itself.
+   These colours are only visible when the outline has width, which is to say
+   on focus, so restoring full opacity changes nothing else. */
+.outline-primary\/25 {
+  outline-color: var(--ui-primary);
+}
+
+.outline-inverted\/25 {
+  outline-color: var(--ui-bg-inverted);
+}
+
 /* Numeric columns in the version timeline must not jitter between rows. */
 .tabular {
   font-variant-numeric: tabular-nums;

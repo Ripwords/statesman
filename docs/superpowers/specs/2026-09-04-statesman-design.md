@@ -142,23 +142,31 @@ The UI exposes a builder mapping onto plugin fields:
 | Control | Field |
 |---|---|
 | Allowed operations (read / write / delete / lock) | `permissions: { state: [...] }` |
-| Project scope | `metadata: { projects: string[] \| "*" }` |
+| Project scope | `metadata: { scope: TokenScope }` |
 | Expiry | `expiresIn` |
 | Rate limit | `rateLimitMax`, `rateLimitTimeWindow` |
 | Kill switch | `enabled` |
 
 Two presets are offered, both producing the same token shape:
 
-- **Scoped** (recommended, default) — `metadata.projects = ["acme/myapp-prod"]`
-- **Account-wide** — `metadata.projects = "*"`, limited to projects the owning
-  user can access
+- **Scoped** (recommended, default) —
+  `metadata.scope = { kind: 'projects', projects: ['acme/myapp-prod'] }`
+- **Account-wide** — `metadata.scope = { kind: 'all' }`, limited to projects the
+  owning user can access
+
+`TokenScope` is a discriminated union defined once in `shared/schemas/token.ts`
+and imported by both the configurator and the guard. An earlier draft of this
+document described a flat `{ projects: string[] | "*" }`; the union is what is
+implemented, because it makes "all projects" and "no projects" distinguishable —
+a flat `[]` is ambiguous between the two, and the guard must fail closed on the
+second.
 
 ### Known gap: project scoping is ours to enforce
 
 Better Auth's `permissions` field is resource→actions, not resource→instances.
 It can express "this key may write state" but not "…only for project X".
 
-Project scope therefore lives in `metadata.projects` and is enforced by our own
+Project scope therefore lives in `metadata.scope` and is enforced by our own
 middleware, not by the plugin. This is roughly ten lines, and it is
 security-critical code: it must be centralised in a single guard that every
 `/api/tf/*` request passes through, never re-implemented per route. It gets
