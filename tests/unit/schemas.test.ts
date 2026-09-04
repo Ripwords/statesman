@@ -38,27 +38,43 @@ describe('tokenConfigSchema', () => {
   })
 
   it('accepts an account-wide token', () => {
-    expect(tokenConfigSchema.parse({
-      name: 'all', actions: ['read'], scope: { kind: 'all' }
-    }).scope.kind).toBe('all')
+    expect(
+      tokenConfigSchema.parse({
+        name: 'all',
+        actions: ['read'],
+        scope: { kind: 'all' }
+      }).scope.kind
+    ).toBe('all')
   })
 
   it('rejects a projects scope with an empty list', () => {
-    expect(() => tokenConfigSchema.parse({
-      name: 'bad', actions: ['read'], scope: { kind: 'projects', projects: [] }
-    })).toThrow()
+    expect(() =>
+      tokenConfigSchema.parse({
+        name: 'bad',
+        actions: ['read'],
+        scope: { kind: 'projects', projects: [] }
+      })
+    ).toThrow()
   })
 
   it('rejects an unknown action', () => {
-    expect(() => tokenConfigSchema.parse({
-      name: 'bad', actions: ['sudo'], scope: { kind: 'all' }
-    })).toThrow()
+    expect(() =>
+      tokenConfigSchema.parse({
+        name: 'bad',
+        actions: ['sudo'],
+        scope: { kind: 'all' }
+      })
+    ).toThrow()
   })
 
   it('rejects an empty name', () => {
-    expect(() => tokenConfigSchema.parse({
-      name: '', actions: ['read'], scope: { kind: 'all' }
-    })).toThrow()
+    expect(() =>
+      tokenConfigSchema.parse({
+        name: '',
+        actions: ['read'],
+        scope: { kind: 'all' }
+      })
+    ).toThrow()
   })
 })
 

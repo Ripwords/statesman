@@ -39,12 +39,15 @@ describe('redactForHealth', () => {
   })
 
   it('strips a bare ipv4 with no port', () => {
-    expect(redactForHealth(new Error('no route to host 192.168.10.20')))
-      .not.toContain('192.168.10.20')
+    expect(redactForHealth(new Error('no route to host 192.168.10.20'))).not.toContain(
+      '192.168.10.20'
+    )
   })
 
   it('strips a bracketed ipv6 host:port', () => {
-    const detail = redactForHealth(new Error('connect ECONNREFUSED [fe80::a00:27ff:fe4e:66a1]:5432'))
+    const detail = redactForHealth(
+      new Error('connect ECONNREFUSED [fe80::a00:27ff:fe4e:66a1]:5432')
+    )
     expect(detail).not.toContain('fe80')
     expect(detail).not.toContain('27ff')
   })
@@ -69,8 +72,9 @@ describe('redactForHealth', () => {
   })
 
   it('does not mangle a postgres cast or a timestamp', () => {
-    expect(redactForHealth(new Error('Failed query: select 1::text at 11:42:15')))
-      .toBe('Failed query: select 1::text at 11:42:15')
+    expect(redactForHealth(new Error('Failed query: select 1::text at 11:42:15'))).toBe(
+      'Failed query: select 1::text at 11:42:15'
+    )
   })
 
   it('keeps only the first line and caps the length', () => {
@@ -87,8 +91,9 @@ describe('redactForHealth', () => {
   })
 
   it('redacts a unc path without leaving a leading separator', () => {
-    expect(redactForHealth(new Error('cannot open \\\\fileserver\\share\\state')))
-      .toBe('cannot open <redacted-path>')
+    expect(redactForHealth(new Error('cannot open \\\\fileserver\\share\\state'))).toBe(
+      'cannot open <redacted-path>'
+    )
   })
 
   it('handles a non-Error throwable', () => {

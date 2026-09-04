@@ -1,6 +1,11 @@
 import {
-  S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand,
-  ListObjectsV2Command, CreateBucketCommand, HeadBucketCommand
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  CreateBucketCommand,
+  HeadBucketCommand
 } from '@aws-sdk/client-s3'
 import type { StateStore } from './types'
 
@@ -46,17 +51,13 @@ export class S3Store implements StateStore {
 
   async put(key: string, data: Uint8Array): Promise<void> {
     await this.ensureBucket()
-    await this.client.send(
-      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data })
-    )
+    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data }))
   }
 
   async get(key: string): Promise<Uint8Array | null> {
     await this.ensureBucket()
     try {
-      const result = await this.client.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: key })
-      )
+      const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }))
       const bytes = await result.Body?.transformToByteArray()
       return bytes ?? null
     } catch (error) {

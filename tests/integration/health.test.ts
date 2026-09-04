@@ -8,8 +8,12 @@ import type { StateStore } from '../../server/storage/types'
 describe('health checks', () => {
   it('passes with a correctly configured environment', async () => {
     const result = await runHealthChecks()
-    expect(result.checks.map((c) => c.name).sort())
-      .toEqual(['database', 'encryption', 'migrations', 'storage'])
+    expect(result.checks.map((c) => c.name).toSorted()).toEqual([
+      'database',
+      'encryption',
+      'migrations',
+      'storage'
+    ])
     expect(result.ok, JSON.stringify(result.checks)).toBe(true)
   })
 
@@ -49,10 +53,20 @@ describe('health checks', () => {
 /** Records every call so a test can prove a probe was skipped, not merely quiet. */
 class RecordingStore implements StateStore {
   readonly calls: string[] = []
-  async put(key: string): Promise<void> { this.calls.push(`put:${key}`) }
-  async get(key: string): Promise<Uint8Array | null> { this.calls.push(`get:${key}`); return null }
-  async delete(key: string): Promise<void> { this.calls.push(`delete:${key}`) }
-  async list(prefix: string): Promise<string[]> { this.calls.push(`list:${prefix}`); return [] }
+  async put(key: string): Promise<void> {
+    this.calls.push(`put:${key}`)
+  }
+  async get(key: string): Promise<Uint8Array | null> {
+    this.calls.push(`get:${key}`)
+    return null
+  }
+  async delete(key: string): Promise<void> {
+    this.calls.push(`delete:${key}`)
+  }
+  async list(prefix: string): Promise<string[]> {
+    this.calls.push(`list:${prefix}`)
+    return []
+  }
 }
 
 describe('assertHealthy', () => {
@@ -91,8 +105,9 @@ describe('assertHealthy', () => {
     const { assertHealthy } = await loadWith({ VERCEL: '', AWS_LAMBDA_FUNCTION_NAME: '' })
     const unwritableRoot = join(process.cwd(), 'package.json')
 
-    await expect(assertHealthy({ store: new LocalStore(unwritableRoot) }))
-      .rejects.toThrow(/storage/)
+    await expect(assertHealthy({ store: new LocalStore(unwritableRoot) })).rejects.toThrow(
+      /storage/
+    )
   })
 
   it('does not leak configuration in the thrown startup message', async () => {
@@ -100,8 +115,10 @@ describe('assertHealthy', () => {
     const unwritableRoot = join(process.cwd(), 'package.json')
 
     // This message is logged at boot, so it gets the same treatment.
-    const error = await assertHealthy({ store: new LocalStore(unwritableRoot) })
-      .then(() => null, (e: unknown) => e)
+    const error = await assertHealthy({ store: new LocalStore(unwritableRoot) }).then(
+      () => null,
+      (e: unknown) => e
+    )
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).not.toContain(unwritableRoot)
   })

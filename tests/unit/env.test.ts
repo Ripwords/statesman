@@ -20,8 +20,7 @@ describe('loadEnv', () => {
 
   it('refuses to start without an encryption key', () => {
     const { STATESMAN_ENCRYPTION_KEY, ...withoutKey } = base
-    expect(() => loadEnv(withoutKey as NodeJS.ProcessEnv))
-      .toThrow(/STATESMAN_ENCRYPTION_KEY/)
+    expect(() => loadEnv(withoutKey as NodeJS.ProcessEnv)).toThrow(/STATESMAN_ENCRYPTION_KEY/)
   })
 
   it('rejects an encryption key that is not 32 bytes', () => {
@@ -31,8 +30,7 @@ describe('loadEnv', () => {
 
   it('rejects local storage on a serverless platform', () => {
     const bad = { ...base, STORAGE_DRIVER: 'local', VERCEL: '1' }
-    expect(() => loadEnv(bad as NodeJS.ProcessEnv))
-      .toThrow(/ephemeral/i)
+    expect(() => loadEnv(bad as NodeJS.ProcessEnv)).toThrow(/ephemeral/i)
   })
 
   it('requires a bucket when the s3 driver is selected', () => {
@@ -43,28 +41,33 @@ describe('loadEnv', () => {
 
 describe('S3_FORCE_PATH_STYLE', () => {
   it('reads "false" as false', () => {
-    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'false' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
-      .toBe(false)
+    expect(
+      loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'false' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE
+    ).toBe(false)
   })
 
   it('reads "0" as false', () => {
-    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: '0' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
-      .toBe(false)
+    expect(
+      loadEnv({ ...base, S3_FORCE_PATH_STYLE: '0' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE
+    ).toBe(false)
   })
 
   it('reads "true" as true', () => {
-    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'true' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
-      .toBe(true)
+    expect(
+      loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'true' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE
+    ).toBe(true)
   })
 
   it('treats an empty value as unset and uses the default', () => {
-    expect(loadEnv({ ...base, S3_FORCE_PATH_STYLE: '' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE)
-      .toBe(false)
+    expect(
+      loadEnv({ ...base, S3_FORCE_PATH_STYLE: '' } as NodeJS.ProcessEnv).S3_FORCE_PATH_STYLE
+    ).toBe(false)
   })
 
   it('rejects a value that is not a boolean', () => {
-    expect(() => loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'maybe' } as NodeJS.ProcessEnv))
-      .toThrow(/S3_FORCE_PATH_STYLE/)
+    expect(() => loadEnv({ ...base, S3_FORCE_PATH_STYLE: 'maybe' } as NodeJS.ProcessEnv)).toThrow(
+      /S3_FORCE_PATH_STYLE/
+    )
   })
 })
 

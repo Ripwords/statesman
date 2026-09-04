@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll } from 'vitest'
 import {
-  S3Client, DeleteBucketCommand, DeleteObjectsCommand, ListObjectsV2Command
+  S3Client,
+  DeleteBucketCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command
 } from '@aws-sdk/client-s3'
 import { conformsToStateStore } from './storage.conformance'
 import { LocalStore } from '../../server/storage/local'
@@ -50,9 +53,7 @@ afterAll(async () => {
     // A bucket must be emptied before it can be dropped.
     let token: string | undefined
     do {
-      const page = await client.send(
-        new ListObjectsV2Command({ Bucket, ContinuationToken: token })
-      )
+      const page = await client.send(new ListObjectsV2Command({ Bucket, ContinuationToken: token }))
       const objects = (page.Contents ?? [])
         .map((o) => o.Key)
         .filter((k): k is string => typeof k === 'string')

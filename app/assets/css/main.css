@@ -1,7 +1,11 @@
-@import "tailwindcss";
-@import "@nuxt/ui";
+@import 'tailwindcss';
+@import '@nuxt/ui';
 
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+}
 
 /* Numeric columns in the version timeline must not jitter between rows. */
-.tabular { font-variant-numeric: tabular-nums; }
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

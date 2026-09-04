@@ -1,5 +1,13 @@
 import {
-  pgTable, text, timestamp, integer, bigint, boolean, jsonb, uniqueIndex, index
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  bigint,
+  boolean,
+  jsonb,
+  uniqueIndex,
+  index
 } from 'drizzle-orm/pg-core'
 
 // --- Better Auth owned tables ------------------------------------------------
@@ -16,7 +24,9 @@ export const user = pgTable('user', {
 
 export const session = pgTable('session', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
   token: text('token').notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
   ipAddress: text('ip_address'),
@@ -27,7 +37,9 @@ export const session = pgTable('session', {
 
 export const account = pgTable('account', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
   // Required as of Better Auth 1.7 — account identity is scoped by issuer.
   issuer: text('issuer').notNull(),
   accountId: text('account_id').notNull(),
@@ -108,7 +120,9 @@ export const project = pgTable(
   'project',
   {
     id: text('id').primaryKey(),
-    orgId: text('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow()
@@ -122,7 +136,9 @@ export const stateVersion = pgTable(
   'state_version',
   {
     id: text('id').primaryKey(),
-    projectId: text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => project.id, { onDelete: 'cascade' }),
     serial: bigint('serial', { mode: 'number' }),
     lineage: text('lineage'),
     sizeBytes: integer('size_bytes').notNull(),
@@ -176,6 +192,15 @@ export const auditLog = pgTable(
 )
 
 export const schema = {
-  user, session, account, verification, apikey,
-  organization, project, stateVersion, projectState, stateLock, auditLog
+  user,
+  session,
+  account,
+  verification,
+  apikey,
+  organization,
+  project,
+  stateVersion,
+  projectState,
+  stateLock,
+  auditLog
 }

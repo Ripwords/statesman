@@ -13,8 +13,12 @@ describe('api keys', () => {
 
   it('verifies a freshly created key', async () => {
     const key = await auth.api.createApiKey({
-      body: { userId, name: 'ci', permissions: { state: ['read', 'write'] },
-              metadata: { projects: ['acme/prod'] } }
+      body: {
+        userId,
+        name: 'ci',
+        permissions: { state: ['read', 'write'] },
+        metadata: { projects: ['acme/prod'] }
+      }
     })
     const result = await auth.api.verifyApiKey({ body: { key: key.key } })
     expect(result.valid).toBe(true)

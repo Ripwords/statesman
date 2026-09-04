@@ -19,7 +19,7 @@ export function conformsToStateStore(name: string, make: () => Promise<StateStor
       await s.put('p1/one.bin', new Uint8Array([1]))
       await s.put('p1/two.bin', new Uint8Array([2]))
       await s.put('p2/three.bin', new Uint8Array([3]))
-      const keys = (await s.list('p1/')).sort()
+      const keys = (await s.list('p1/')).toSorted()
       expect(keys).toEqual(['p1/one.bin', 'p1/two.bin'])
     })
 
