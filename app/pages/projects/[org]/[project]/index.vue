@@ -10,13 +10,19 @@ useHead({ title: () => `${org.value}/${slug.value} · statesman` })
 
 // Shares a cache key with the project list, so arriving from there costs no
 // extra request. Row types come from Nitro's typed routes.
-const { data: projects, refresh: refreshProjects } = await useFetch('/api/ui/projects')
-const current = computed(() =>
-  projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
+const {
+  data: projects,
+  error: projectsError,
+  refresh: refreshProjects
+} = await useFetch('/api/ui/projects')
+const current = computed(
+  () => projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
 )
 
 // An address that names no project is a 404, not a 200 with a sad face on it.
-if (import.meta.server && !current.value) {
+// Only when the list actually loaded, though: a failed request must not be
+// reported as a missing project.
+if (import.meta.server && !current.value && !projectsError.value) {
   const event = useRequestEvent()
   if (event) setResponseStatus(event, 404)
 }
@@ -34,11 +40,15 @@ const { data: history, refresh } = await useFetch(
 // The comparison lives in the URL so it can be shared and reloaded.
 const compareA = computed({
   get: () => (typeof route.query.a === 'string' ? route.query.a : ''),
-  set: (value: string) => { void navigateTo({ query: { ...route.query, a: value || undefined } }) }
+  set: (value: string) => {
+    void navigateTo({ query: { ...route.query, a: value || undefined } })
+  }
 })
 const compareB = computed({
   get: () => (typeof route.query.b === 'string' ? route.query.b : ''),
-  set: (value: string) => { void navigateTo({ query: { ...route.query, b: value || undefined } }) }
+  set: (value: string) => {
+    void navigateTo({ query: { ...route.query, b: value || undefined } })
+  }
 })
 
 const versionOptions = computed(() =>
@@ -83,7 +93,7 @@ function rollbackMessage(error: unknown): string {
   const status = error instanceof FetchError ? error.statusCode : undefined
   switch (status) {
     case 404:
-      return 'This server has no rollback endpoint yet. Update it to a build that includes the admin API, then try again.'
+      return 'That version no longer exists. Reload the timeline, then try again.'
     case 401:
     case 403:
       return 'You are not allowed to roll this project back. Sign in again, then try again.'
@@ -123,22 +133,37 @@ async function rollback() {
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const bytes = new Intl.NumberFormat(undefined, {
-  notation: 'compact', style: 'unit', unit: 'byte', unitDisplay: 'narrow'
+  notation: 'compact',
+  style: 'unit',
+  unit: 'byte',
+  unitDisplay: 'narrow'
 })
 </script>
 
 <template>
   <div class="space-y-6">
-    <UBreadcrumb
-      :items="[{ label: 'Projects', to: '/' }, { label: `${org}/${slug}` }]"
-    />
+    <UBreadcrumb :items="[{ label: 'Projects', to: '/' }, { label: `${org}/${slug}` }]" />
 
     <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance" translate="no">
       {{ org }}/{{ slug }}
     </h1>
 
+    <div v-if="projectsError" aria-live="polite">
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Could Not Load This Project"
+        description="The server did not answer. This is a problem reaching statesman, not a sign that the project is gone."
+      >
+        <template #actions>
+          <UButton color="error" variant="outline" label="Retry" @click="refreshProjects()" />
+        </template>
+      </UAlert>
+    </div>
+
     <EmptyState
-      v-if="!current"
+      v-else-if="!current"
       icon="i-lucide-search-x"
       title="Project Not Found"
       description="No project matches this address. It may have been renamed or removed — check the list for the current name."
@@ -147,8 +172,13 @@ const bytes = new Intl.NumberFormat(undefined, {
     </EmptyState>
 
     <template v-else>
+      <!--
+        lockedAt, not lockedBy: a client that omits `Who` from its LockInfo held
+        a lock this banner never rendered, which also removed the only
+        Force Unlock button in the product. See app/utils/lock.ts.
+      -->
       <LockBanner
-        v-if="current.lockedBy"
+        v-if="isLocked(current)"
         :project-id="current.id"
         :who="current.lockedBy"
         :since="current.lockedAt"
@@ -245,14 +275,18 @@ const bytes = new Intl.NumberFormat(undefined, {
       :open="pendingRollback !== null"
       title="Roll Back to This Version?"
       :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
-      @update:open="(value) => { if (!value) pendingRollback = null }"
+      @update:open="
+        (value) => {
+          if (!value) pendingRollback = null
+        }
+      "
     >
       <template #body>
         <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
             This writes the contents of version #{{ pendingRollback?.serial ?? '—' }} as a new
-            version. Nothing is deleted and the timeline keeps every entry. The next
-            terraform plan will read the restored state.
+            version. Nothing is deleted and the timeline keeps every entry. The next terraform plan
+            will read the restored state.
           </p>
           <div aria-live="polite">
             <UAlert
@@ -267,12 +301,7 @@ const bytes = new Intl.NumberFormat(undefined, {
       </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancel"
-            @click="pendingRollback = null"
-          />
+          <UButton color="neutral" variant="ghost" label="Cancel" @click="pendingRollback = null" />
           <UButton
             color="primary"
             :loading="rollingBack"

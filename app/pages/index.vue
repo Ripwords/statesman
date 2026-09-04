@@ -4,7 +4,7 @@ useHead({ title: 'Projects · statesman' })
 
 // No generic: Nitro types `/api/ui/projects` from the handler itself, so the
 // row shape is derived from the server rather than restated here.
-const { data: projects, status, refresh } = await useFetch('/api/ui/projects')
+const { data: projects, status, error, refresh } = await useFetch('/api/ui/projects')
 
 const creating = ref(false)
 
@@ -47,6 +47,25 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
     </div>
 
     <!--
+      Before the empty state, deliberately. A failed request left `projects`
+      empty, so a database blip rendered "No Projects Yet" — the most reassuring
+      possible answer to "your state store is unreachable".
+    -->
+    <div v-else-if="error" aria-live="polite">
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Could Not Load Projects"
+        description="The server did not answer. This is a problem reaching statesman, not a sign that you have no projects."
+      >
+        <template #actions>
+          <UButton color="error" variant="outline" label="Retry" @click="refresh()" />
+        </template>
+      </UAlert>
+    </div>
+
+    <!--
       This copy used to say a project appears the first time Terraform writes to
       it. That was never true — an address statesman does not recognise is a 404
       (spec §9) — and believing it is what hid the missing create path for a
@@ -85,17 +104,22 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
               >{{ p.org }}/{{ p.slug }}</span
             >
             <!--
-              `lockedBy` is whatever Terraform reported and can be arbitrarily long.
-              The badge's own label slot already truncates; min-w-0/max-w-full is
-              what lets the badge shrink far enough for that to take effect.
+              Gated on lockedAt, not lockedBy: `Who` is optional in Terraform's
+              LockInfo, so a client that omits it held a lock the dashboard
+              showed no sign of. See app/utils/lock.ts.
+
+              `lockedBy` is whatever Terraform reported and can be arbitrarily
+              long. The badge's own label slot already truncates; min-w-0 and
+              max-w-full are what let the badge shrink far enough for that to
+              take effect.
             -->
             <UBadge
-              v-if="p.lockedBy"
+              v-if="isLocked(p)"
               color="warning"
               variant="subtle"
               icon="i-lucide-lock"
               class="min-w-0 max-w-full"
-              :label="`Locked by ${p.lockedBy}`"
+              :label="`Locked by ${lockHolder(p)}`"
             />
           </div>
 
