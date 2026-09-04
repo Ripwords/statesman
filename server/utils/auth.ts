@@ -33,6 +33,11 @@ export const auth = betterAuth({
         timeWindow: 60_000,
         maxRequests: 120
       },
+      // The plugin's own default ceiling is 365 days, but tokenConfigSchema
+      // promises up to 3650 and the configurator offers it. Left at the default,
+      // any request above a year returned a server-side 400 that the form could
+      // not explain. Stated explicitly so the two cannot drift apart again.
+      keyExpiration: { maxExpiresIn: 3650 },
       permissions: { defaultPermissions: { state: ['read'] } }
     })
   ]
