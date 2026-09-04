@@ -19,6 +19,8 @@
   "packageManager": "pnpm@10.17.1",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
+    "@better-auth/api-key": "1.7.2",
+    "@better-auth/utils": "0.4.2",
     "@neondatabase/serverless": "1.1.0",
     "@nuxt/ui": "4.11.0",
     "better-auth": "1.7.2",
@@ -38,5 +40,10 @@
     "vue-tsc": "^3.3.11"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "pnpm": {
+    "overrides": {
+      "@better-auth/utils": "0.4.2"
+    }
+  }
 }

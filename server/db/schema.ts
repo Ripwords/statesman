@@ -28,6 +28,8 @@ export const session = pgTable('session', {
 export const account = pgTable('account', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  // Required as of Better Auth 1.7 — account identity is scoped by issuer.
+  issuer: text('issuer').notNull(),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
   accessToken: text('access_token'),
@@ -50,29 +52,48 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
 
-export const apikey = pgTable('apikey', {
-  id: text('id').primaryKey(),
-  name: text('name'),
-  start: text('start'),
-  prefix: text('prefix'),
-  key: text('key').notNull(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  refillInterval: integer('refill_interval'),
-  refillAmount: integer('refill_amount'),
-  lastRefillAt: timestamp('last_refill_at'),
-  enabled: boolean('enabled').notNull().default(true),
-  rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(false),
-  rateLimitTimeWindow: integer('rate_limit_time_window'),
-  rateLimitMax: integer('rate_limit_max'),
-  requestCount: integer('request_count').notNull().default(0),
-  remaining: integer('remaining'),
-  lastRequest: timestamp('last_request'),
-  expiresAt: timestamp('expires_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-  permissions: text('permissions'),
-  metadata: text('metadata')
-})
+// Mirrors the table declared by @better-auth/api-key 1.7.2. Two columns differ
+// from what a reader might expect: the owner column is `referenceId`, not
+// `userId` (the plugin can reference an organization instead of a user), and
+// `configId` selects between multiple named plugin configurations.
+//
+// The FK on referenceId -> user.id is ours, not the plugin's: this deployment
+// only ever issues user-owned keys, and the cascade stops a deleted user from
+// leaving live credentials behind.
+export const apikey = pgTable(
+  'apikey',
+  {
+    id: text('id').primaryKey(),
+    configId: text('config_id').notNull().default('default'),
+    name: text('name'),
+    start: text('start'),
+    prefix: text('prefix'),
+    key: text('key').notNull(),
+    referenceId: text('reference_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    refillInterval: integer('refill_interval'),
+    refillAmount: integer('refill_amount'),
+    lastRefillAt: timestamp('last_refill_at'),
+    enabled: boolean('enabled').notNull().default(true),
+    rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(true),
+    rateLimitTimeWindow: bigint('rate_limit_time_window', { mode: 'number' }),
+    rateLimitMax: integer('rate_limit_max'),
+    requestCount: integer('request_count').notNull().default(0),
+    remaining: integer('remaining'),
+    lastRequest: timestamp('last_request'),
+    expiresAt: timestamp('expires_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    permissions: text('permissions'),
+    metadata: text('metadata')
+  },
+  (t) => [
+    index('apikey_reference_idx').on(t.referenceId),
+    index('apikey_key_idx').on(t.key),
+    index('apikey_config_idx').on(t.configId)
+  ]
+)
 
 // --- Application tables ------------------------------------------------------
 
