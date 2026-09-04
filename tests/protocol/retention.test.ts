@@ -28,17 +28,19 @@ async function seedOldVersion(index: number): Promise<void> {
   const id = ulid()
   const key = `${ORG}/prod/${id}.tfstate.enc`
   await store().put(key, new Uint8Array([index % 256]))
-  await db().insert(stateVersion).values({
-    id,
-    projectId,
-    serial: index,
-    lineage: 'old',
-    sizeBytes: 1,
-    md5: 'x',
-    blobKey: key,
-    createdBy: 'u',
-    createdAt: new Date(Date.now() - 60 * 86_400_000 - index * 60_000)
-  })
+  await db()
+    .insert(stateVersion)
+    .values({
+      id,
+      projectId,
+      serial: index,
+      lineage: 'old',
+      sizeBytes: 1,
+      md5: 'x',
+      blobKey: key,
+      createdBy: 'u',
+      createdAt: new Date(Date.now() - 60 * 86_400_000 - index * 60_000)
+    })
 }
 
 describe('retention', () => {
@@ -80,5 +82,39 @@ describe('retention', () => {
     // limit 100, which cannot tell 100 remaining from 150 remaining.
     expect(await listVersions(projectId, 500)).toHaveLength(100)
     expect(await readCurrentState(projectId)).toEqual(body(9))
+  })
+})
+
+/**
+ * The sweep lists blobs, then reads the version rows that claim them. writeState
+ * does the opposite: blob first, row second (deliberately — spec §9 orders it so
+ * a crash leaves an orphan rather than a dangling pointer). Between those two
+ * writes the new blob exists and no row claims it, so a sweep running in that
+ * window deletes state that is about to become current: the pointer then names a
+ * blob that is gone, GET returns 404, and Terraform plans a full recreate.
+ */
+describe('the orphan sweep and an in-flight write', () => {
+  it('leaves a blob written moments ago alone', async () => {
+    // Exactly the intermediate state of writeState: the blob is on disk under a
+    // fresh ULID key, the state_version row does not exist yet.
+    const inflight = `${ORG}/prod/${ulid()}.tfstate.enc`
+    await store().put(inflight, new Uint8Array([1, 2, 3]))
+
+    const result = await runRetention(projectId)
+
+    expect(result.sweptBlobs).toBe(0)
+    expect(await store().get(inflight)).not.toBeNull()
+  })
+
+  it('still sweeps an orphan old enough that no write could be in flight', async () => {
+    // ulid() takes a seed time, so this is a real ULID that says it was minted
+    // yesterday — which is what the sweep reads to date the blob.
+    const key = `${ORG}/prod/${ulid(Date.now() - 25 * 60 * 60 * 1000)}.tfstate.enc`
+    await store().put(key, new Uint8Array([9]))
+
+    const result = await runRetention(projectId)
+
+    expect(result.sweptBlobs).toBe(1)
+    expect(await store().get(key)).toBeNull()
   })
 })
