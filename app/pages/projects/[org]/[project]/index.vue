@@ -1,6 +1,8 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'dashboard' })
 
+import { FetchError } from 'ofetch'
+
 const route = useRoute()
 const org = computed(() => String(route.params.org))
 const slug = computed(() => String(route.params.project))
@@ -12,6 +14,12 @@ const { data: projects, refresh: refreshProjects } = await useFetch('/api/ui/pro
 const current = computed(() =>
   projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
 )
+
+// An address that names no project is a 404, not a 200 with a sad face on it.
+if (import.meta.server && !current.value) {
+  const event = useRequestEvent()
+  if (event) setResponseStatus(event, 404)
+}
 
 type Version = NonNullable<typeof history.value>['versions'][number]
 
@@ -37,7 +45,21 @@ const versionOptions = computed(() =>
   (history.value?.versions ?? []).map((v) => ({ label: `#${v.serial ?? '?'}`, value: v.id }))
 )
 
-const unlockNotice = ref<string | null>(null)
+const notice = ref<string | null>(null)
+const noticeEl = useTemplateRef<HTMLElement>('noticeEl')
+
+/**
+ * The control that triggers each of these actions lives inside the thing the
+ * action removes — the lock banner, or a timeline row. Focus would land on
+ * <body>, so it is moved to the message that replaced it, which also reads that
+ * message out. That is why the container is not an aria-live region: focus
+ * already announces it, and both would announce it twice.
+ */
+async function announce(message: string) {
+  notice.value = message
+  await nextTick()
+  noticeEl.value?.focus()
+}
 
 /**
  * `lockedBy` comes from the project list, not the version list, so refreshing
@@ -45,12 +67,33 @@ const unlockNotice = ref<string | null>(null)
  */
 async function onLockReleased() {
   await Promise.all([refreshProjects(), refresh()])
-  unlockNotice.value = 'State unlocked. Terraform can apply against this project again.'
+  await announce('State unlocked. Terraform can apply against this project again.')
 }
 
 const pendingRollback = ref<Version | null>(null)
 const rollingBack = ref(false)
 const rollbackError = ref<string | null>(null)
+
+/**
+ * Says what actually went wrong. Until Lane A's admin API merges every attempt
+ * is a 404, and "check that the version still exists" would be a lie in the one
+ * case that happens today.
+ */
+function rollbackMessage(error: unknown): string {
+  const status = error instanceof FetchError ? error.statusCode : undefined
+  switch (status) {
+    case 404:
+      return 'This server has no rollback endpoint yet. Update it to a build that includes the admin API, then try again.'
+    case 401:
+    case 403:
+      return 'You are not allowed to roll this project back. Sign in again, then try again.'
+    case 409:
+    case 423:
+      return 'The state is locked, so it cannot be rewritten. Release the lock first, then roll back.'
+    default:
+      return 'Could not roll back. Check your connection, then try again.'
+  }
+}
 
 async function rollback() {
   const version = pendingRollback.value
@@ -59,16 +102,20 @@ async function rollback() {
   rollingBack.value = true
   rollbackError.value = null
   try {
-    // Built by Lane A (Task A6). Until that lane merges this route does not
-    // exist, and the message below is what the user sees.
+    // Built by Lane A (Task A6). Until that lane merges this route 404s, and
+    // rollbackMessage says so.
     await $fetch('/api/admin/rollback', {
       method: 'POST',
       body: { projectId: project.id, versionId: version.id }
     })
+    const serial = version.serial
     pendingRollback.value = null
-    await refresh()
-  } catch {
-    rollbackError.value = 'Could not roll back. Check that the version still exists, then try again.'
+    await Promise.all([refreshProjects(), refresh()])
+    await announce(
+      `Rolled back to version #${serial ?? '—'}. It is now the current version, and the timeline kept every earlier one.`
+    )
+  } catch (error) {
+    rollbackError.value = rollbackMessage(error)
   } finally {
     rollingBack.value = false
   }
@@ -100,20 +147,27 @@ const bytes = new Intl.NumberFormat(undefined, {
     </EmptyState>
 
     <template v-else>
-      <div aria-live="polite">
-        <LockBanner
-          v-if="current.lockedBy"
-          :project-id="current.id"
-          :who="current.lockedBy"
-          :since="current.lockedAt"
-          @released="onLockReleased"
-        />
+      <LockBanner
+        v-if="current.lockedBy"
+        :project-id="current.id"
+        :who="current.lockedBy"
+        :since="current.lockedAt"
+        @released="onLockReleased"
+      />
+
+      <div
+        v-else-if="notice"
+        ref="noticeEl"
+        tabindex="-1"
+        class="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
         <UAlert
-          v-else-if="unlockNotice"
           color="success"
           variant="subtle"
-          icon="i-lucide-lock-open"
-          :description="unlockNotice"
+          icon="i-lucide-circle-check"
+          :description="notice"
+          :close="true"
+          @update:open="notice = null"
         />
       </div>
 
@@ -154,7 +208,7 @@ const bytes = new Intl.NumberFormat(undefined, {
           <li
             v-for="v in history.versions"
             :key="v.id"
-            class="[contain-intrinsic-size:auto_3.5rem] flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
+            class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
           >
             <UBadge
               v-if="v.id === history.currentVersionId"
@@ -190,10 +244,11 @@ const bytes = new Intl.NumberFormat(undefined, {
     <UModal
       :open="pendingRollback !== null"
       title="Roll Back to This Version?"
+      :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
       @update:open="(value) => { if (!value) pendingRollback = null }"
     >
       <template #body>
-        <div class="space-y-3 overscroll-contain">
+        <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
             This writes the contents of version #{{ pendingRollback?.serial ?? '—' }} as a new
             version. Nothing is deleted and the timeline keeps every entry. The next

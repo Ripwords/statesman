@@ -20,6 +20,11 @@ const visible = computed(() =>
   showAll.value ? selected.value : selected.value.slice(0, ROW_CAP)
 )
 const hiddenCount = computed(() => selected.value.length - visible.value.length)
+
+// The cap is lifted by an explicit click, so it has to come back when the thing
+// being looked at changes. Without this, opening one long diff and clicking
+// through unpins the cap for every diff after it.
+watch([() => props.lines, showUnchanged], () => { showAll.value = false })
 const changeCount = computed(() => props.lines.filter((l) => l.kind !== 'same').length)
 </script>
 

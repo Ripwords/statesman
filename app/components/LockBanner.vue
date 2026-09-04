@@ -32,7 +32,7 @@ async function forceUnlock() {
       title="State Is Locked"
     >
       <template #description>
-        Held by <span translate="no">{{ who ?? 'an unknown process' }}</span>
+        Held by <span class="break-words" translate="no">{{ who ?? 'an unknown process' }}</span>
         <ClientOnly v-if="since"> since {{ when.format(new Date(since)) }}</ClientOnly>.
         Terraform will refuse to apply until it is released.
       </template>
@@ -46,9 +46,13 @@ async function forceUnlock() {
       </template>
     </UAlert>
 
-    <UModal v-model:open="open" title="Force Unlock This State?">
+    <UModal
+      v-model:open="open"
+      title="Force Unlock This State?"
+      :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
+    >
       <template #body>
-        <div class="space-y-3 overscroll-contain">
+        <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
             Force-unlocking while another process is mid-apply can corrupt your state file.
             Only do this when you are certain the holder has died. This action is recorded

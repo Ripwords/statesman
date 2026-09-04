@@ -67,9 +67,20 @@ const backendSnippet = computed(() => `terraform {
 </script>
 
 <template>
-  <UModal v-model:open="open" title="Copy Your Token Now" :dismissible="false">
+  <!--
+    :dismissible stops Escape and outside-click; :close removes the header X.
+    Both are needed: the key is unrecoverable, so every exit from this dialog
+    should be the deliberate button at the bottom.
+  -->
+  <UModal
+    v-model:open="open"
+    title="Copy Your Token Now"
+    :dismissible="false"
+    :close="false"
+    :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
+  >
     <template #body>
-      <div class="space-y-4 overscroll-contain">
+      <div class="space-y-4">
         <UAlert
           color="warning"
           variant="subtle"

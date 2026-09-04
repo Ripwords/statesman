@@ -12,15 +12,28 @@ const selected = computed(() => Boolean(a.value && b.value))
 
 useHead({ title: () => `Diff · ${org.value}/${slug.value} · statesman` })
 
+// The timeline page resolves the project before it renders anything; this page
+// has to as well, or it will happily draw a diff under a breadcrumb pointing at
+// a project that does not exist. Shares the list's cache key, so it is free.
+const { data: projects } = await useFetch('/api/ui/projects')
+const project = computed(() =>
+  projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
+)
+
+if (import.meta.server && !project.value) {
+  const event = useRequestEvent()
+  if (event) setResponseStatus(event, 404)
+}
+
 // Two fetches over one route need distinct keys, and neither should fire until
 // the query string actually names a version.
 const { data: left, status: leftStatus, error: leftError } = await useFetch(
   () => `/api/ui/versions/${a.value}`,
-  { key: 'diff-left', immediate: selected.value, watch: [a] }
+  { key: 'diff-left', immediate: selected.value && project.value !== null, watch: [a] }
 )
 const { data: right, status: rightStatus, error: rightError } = await useFetch(
   () => `/api/ui/versions/${b.value}`,
-  { key: 'diff-right', immediate: selected.value, watch: [b] }
+  { key: 'diff-right', immediate: selected.value && project.value !== null, watch: [b] }
 )
 
 const loading = computed(() => leftStatus.value === 'pending' || rightStatus.value === 'pending')
@@ -34,11 +47,13 @@ const lines = computed(() =>
 <template>
   <div class="space-y-6">
     <UBreadcrumb
-      :items="[
-        { label: 'Projects', to: '/' },
-        { label: `${org}/${slug}`, to: `/projects/${org}/${slug}` },
-        { label: 'Diff' }
-      ]"
+      :items="project
+        ? [
+          { label: 'Projects', to: '/' },
+          { label: `${org}/${slug}`, to: `/projects/${org}/${slug}` },
+          { label: 'Diff' }
+        ]
+        : [{ label: 'Projects', to: '/' }, { label: 'Diff' }]"
     />
 
     <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">
@@ -46,7 +61,16 @@ const lines = computed(() =>
     </h1>
 
     <EmptyState
-      v-if="!selected"
+      v-if="!project"
+      icon="i-lucide-search-x"
+      title="Project Not Found"
+      description="No project matches this address. It may have been renamed or removed — check the list for the current name."
+    >
+      <UButton to="/" label="Back to Projects" icon="i-lucide-arrow-left" />
+    </EmptyState>
+
+    <EmptyState
+      v-else-if="!selected"
       icon="i-lucide-git-compare"
       title="Pick Two Versions"
       description="A comparison needs both an older and a newer version. Choose them on the project page and the address bar will carry the selection here."

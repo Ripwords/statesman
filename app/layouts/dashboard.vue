@@ -13,8 +13,23 @@ const links: NavigationMenuItem[] = [
   { label: 'Tokens', icon: 'i-lucide-key-round', to: '/tokens' }
 ]
 
+const toast = useToast()
+
+async function onSignOut() {
+  const { ok } = await signOut()
+  if (ok) return
+  // signOut leaves the local session alone when the server did not confirm, so
+  // the UI must say so rather than silently look signed in.
+  toast.add({
+    title: 'Could Not Sign Out',
+    description: 'The server did not confirm the sign-out, so you are still signed in. Check your connection and try again.',
+    color: 'error',
+    icon: 'i-lucide-triangle-alert'
+  })
+}
+
 const accountItems: DropdownMenuItem[][] = [
-  [{ label: 'Sign Out', icon: 'i-lucide-log-out', onSelect: () => { void signOut() } }]
+  [{ label: 'Sign Out', icon: 'i-lucide-log-out', onSelect: () => { void onSignOut() } }]
 ]
 </script>
 
@@ -60,8 +75,35 @@ const accountItems: DropdownMenuItem[][] = [
       </div>
     </header>
 
-    <main id="main" class="mx-auto max-w-6xl scroll-mt-24 px-4 py-8 sm:px-6">
+    <!--
+      tabindex="-1" is what makes the skip link actually move focus. Without it
+      the anchor scrolls but focus stays on <body>, which Chromium papers over
+      with its sequential-focus starting point and VoiceOver/Safari does not.
+    -->
+    <main
+      id="main"
+      tabindex="-1"
+      class="mx-auto max-w-6xl scroll-mt-24 px-4 py-8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:px-6"
+    >
       <slot />
     </main>
   </div>
 </template>
+
+<style>
+/*
+  The header is sticky, so anything scrolled to the top of the viewport by the
+  browser lands underneath it. Scroll margin therefore belongs on whatever
+  actually receives focus, not on <main> — a row Shift+Tabbed into from below
+  was otherwise more than half hidden behind the header.
+
+  One :where() rule rather than a utility class per element: it reaches the
+  focusable elements inside Nuxt UI's own components (nav links, breadcrumbs,
+  switches, select triggers) that no class of ours can touch, and its zero
+  specificity means any explicit scroll-mt-* still wins.
+*/
+:where(a[href], area, button, input, select, textarea, summary, iframe, [tabindex]:not([tabindex='-1'])) {
+  scroll-margin-top: 6rem;
+  scroll-margin-bottom: 2rem;
+}
+</style>

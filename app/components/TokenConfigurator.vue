@@ -123,9 +123,15 @@ function onError(event: FormErrorEvent) {
       description="Pick at least one."
       required
     >
+      <!--
+        reka-ui's ComboboxTrigger hardcodes aria-label="Show popup", which wins
+        the accessible-name computation over the field's own <label>. An
+        explicit aria-label is the only way to get the field's name announced.
+      -->
       <USelectMenu
         v-model="selectedProjects"
         multiple
+        aria-label="Projects"
         :items="projectOptions"
         placeholder="Choose projects…"
         class="w-full"

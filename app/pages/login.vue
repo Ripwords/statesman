@@ -17,23 +17,24 @@ const formError = ref<string | null>(null)
 const route = useRoute()
 const { signIn } = useAuth()
 
-/** Only same-origin paths, so `?redirect=` cannot bounce anyone off-site. */
-function safeRedirect(value: unknown): string {
-  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
-    ? value
-    : '/'
-}
+// Set by the route guard when the auth server could not be reached, so the
+// page can say so instead of implying the visitor was signed out.
+const unreachable = computed(() => route.query.reason === 'unavailable')
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   pending.value = true
   formError.value = null
-  const { error } = await signIn(event.data)
+  const result = await signIn(event.data)
   pending.value = false
-  if (error) {
-    formError.value = 'That email and password did not match. Check both and try again.'
+  if (!result.ok) {
+    // A rejected password and an unreachable server need different next steps,
+    // so they get different sentences.
+    formError.value = result.reason === 'unreachable'
+      ? 'We could not reach the sign-in service. Check your connection, then try again.'
+      : 'That email and password did not match. Check both and try again.'
     return
   }
-  await navigateTo(safeRedirect(route.query.redirect))
+  await navigateTo(safeInternalPath(route.query.redirect))
 }
 
 function onError(event: FormErrorEvent) {
@@ -53,6 +54,16 @@ function onError(event: FormErrorEvent) {
         </h1>
       </template>
 
+      <div v-if="unreachable" class="mb-4">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-plug-zap"
+          title="Sign-In Service Unreachable"
+          description="We could not check whether you were already signed in. Sign in below, or wait a moment and reload."
+        />
+      </div>
+
       <UForm
         :schema="schema"
         :state="state"
@@ -68,7 +79,7 @@ function onError(event: FormErrorEvent) {
             autocomplete="username"
             autocapitalize="none"
             :spellcheck="false"
-            placeholder="you@example.com"
+            placeholder="you@example.com…"
             class="w-full"
           />
         </UFormField>

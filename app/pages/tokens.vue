@@ -79,7 +79,7 @@ function onCreated(token: { id: string, key: string, name: string }) {
       <li
         v-for="t in tokens"
         :key="t.id"
-        class="[contain-intrinsic-size:auto_3.5rem] flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
+        class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
       >
         <span class="min-w-0 truncate font-medium">{{ t.name ?? 'Unnamed' }}</span>
         <code class="text-xs text-muted" translate="no">{{ t.start }}…</code>
@@ -106,7 +106,13 @@ function onCreated(token: { id: string, key: string, name: string }) {
       </li>
     </ul>
 
-    <USlideover v-model:open="creating" title="New Token">
+    <!-- The slideover's own body is the scroll container, so the containment
+         belongs on that slot rather than on a child of it. -->
+    <USlideover
+      v-model:open="creating"
+      title="New Token"
+      :ui="{ body: 'overscroll-contain' }"
+    >
       <template #body>
         <TokenConfigurator @created="onCreated" />
       </template>
@@ -115,10 +121,11 @@ function onCreated(token: { id: string, key: string, name: string }) {
     <UModal
       :open="pendingRevoke !== null"
       title="Revoke This Token?"
+      :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
       @update:open="(value) => { if (!value) pendingRevoke = null }"
     >
       <template #body>
-        <div class="space-y-3 overscroll-contain">
+        <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
             Revoking {{ pendingRevoke?.name ?? 'this token' }} takes effect immediately and
             cannot be undone. Any Terraform run still configured with it will fail to

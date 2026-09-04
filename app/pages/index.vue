@@ -42,19 +42,25 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
       <li
         v-for="p in projects"
         :key="p.id"
-        class="[contain-intrinsic-size:auto_6rem] [content-visibility:auto]"
+        class="[contain-intrinsic-size:auto_6rem] min-w-0 [content-visibility:auto]"
       >
         <NuxtLink
           :to="`/projects/${p.org}/${p.slug}`"
           class="block rounded-lg border border-default p-4 transition-[color,background-color,border-color] hover:border-primary hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <span class="min-w-0 truncate font-medium" translate="no">{{ p.org }}/{{ p.slug }}</span>
+            <!--
+              `lockedBy` is whatever Terraform reported and can be arbitrarily long.
+              The badge's own label slot already truncates; min-w-0/max-w-full is
+              what lets the badge shrink far enough for that to take effect.
+            -->
             <UBadge
               v-if="p.lockedBy"
               color="warning"
               variant="subtle"
               icon="i-lucide-lock"
+              class="min-w-0 max-w-full"
               :label="`Locked by ${p.lockedBy}`"
             />
           </div>
