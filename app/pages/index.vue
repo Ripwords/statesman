@@ -4,13 +4,22 @@ useHead({ title: 'Projects · statesman' })
 
 // No generic: Nitro types `/api/ui/projects` from the handler itself, so the
 // row shape is derived from the server rather than restated here.
-const { data: projects, status } = await useFetch('/api/ui/projects')
+const { data: projects, status, refresh } = await useFetch('/api/ui/projects')
+
+const creating = ref(false)
+
+// v1 runs one organization per deployment (spec §5), so any row names it. On an
+// empty list there is no row, and the server resolves it instead.
+const org = computed(() => projects.value?.[0]?.org)
 
 // Both formatters resolve against the runtime's locale, which differs between
 // the server and the browser — every call site below sits inside <ClientOnly>
 // so the difference is a swap rather than a hydration mismatch.
 const bytes = new Intl.NumberFormat(undefined, {
-  notation: 'compact', style: 'unit', unit: 'byte', unitDisplay: 'narrow'
+  notation: 'compact',
+  style: 'unit',
+  unit: 'byte',
+  unitDisplay: 'narrow'
 })
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 </script>
@@ -19,9 +28,17 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
   <div>
     <div class="mb-6 flex items-center justify-between gap-4">
       <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Projects</h1>
-      <UBadge v-if="projects?.length" color="neutral" variant="subtle" class="tabular">
-        {{ projects.length }}
-      </UBadge>
+      <div class="flex items-center gap-3">
+        <UBadge v-if="projects?.length" color="neutral" variant="subtle" class="tabular">
+          {{ projects.length }}
+        </UBadge>
+        <UButton
+          v-if="projects?.length"
+          icon="i-lucide-plus"
+          label="New Project"
+          @click="creating = true"
+        />
+      </div>
     </div>
 
     <div v-if="status === 'pending'" class="space-y-3" aria-live="polite" aria-busy="true">
@@ -29,13 +46,28 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
       <span class="sr-only">Loading Projects…</span>
     </div>
 
+    <!--
+      This copy used to say a project appears the first time Terraform writes to
+      it. That was never true — an address statesman does not recognise is a 404
+      (spec §9) — and believing it is what hid the missing create path for a
+      whole phase. It says what actually happens now.
+    -->
     <EmptyState
       v-else-if="!projects?.length"
       icon="i-lucide-boxes"
       title="No Projects Yet"
-      description="A project appears here the first time Terraform writes state to it. Create a token, point a backend block at this server, and run apply."
+      description="Create a project here, then point a Terraform backend block at it. Projects are never created implicitly: an address that does not match one returns 404, so a typo cannot quietly split your state across two of them."
     >
-      <UButton to="/tokens" label="Create a Token" icon="i-lucide-key-round" />
+      <div class="flex flex-wrap justify-center gap-2">
+        <UButton icon="i-lucide-plus" label="Create Your First Project" @click="creating = true" />
+        <UButton
+          to="/tokens"
+          label="Create a Token"
+          icon="i-lucide-key-round"
+          variant="outline"
+          color="neutral"
+        />
+      </div>
     </EmptyState>
 
     <ul v-else class="grid gap-3">
@@ -49,7 +81,9 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
           class="block rounded-lg border border-default p-4 transition-[color,background-color,border-color] hover:border-primary hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span class="min-w-0 truncate font-medium" translate="no">{{ p.org }}/{{ p.slug }}</span>
+            <span class="min-w-0 truncate font-medium" translate="no"
+              >{{ p.org }}/{{ p.slug }}</span
+            >
             <!--
               `lockedBy` is whatever Terraform reported and can be arbitrarily long.
               The badge's own label slot already truncates; min-w-0/max-w-full is
@@ -94,5 +128,7 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
         </NuxtLink>
       </li>
     </ul>
+
+    <ProjectCreateModal v-model:open="creating" :org="org" @created="refresh()" />
   </div>
 </template>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-const props = defineProps<{ token: { key: string, name: string } | null }>()
+const props = defineProps<{ token: { key: string; name: string } | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const open = computed({
   get: () => props.token !== null,
-  set: (value: boolean) => { if (!value) emit('close') }
+  set: (value: boolean) => {
+    if (!value) emit('close')
+  }
 })
 
 const copied = ref(false)
@@ -18,10 +20,13 @@ async function copy() {
     copyError.value = null
     copied.value = true
     if (resetTimer) clearTimeout(resetTimer)
-    resetTimer = setTimeout(() => { copied.value = false }, 2000)
+    resetTimer = setTimeout(() => {
+      copied.value = false
+    }, 2000)
   } catch {
     copied.value = false
-    copyError.value = 'The clipboard is not available here. Select the token above and copy it manually.'
+    copyError.value =
+      'The clipboard is not available here. Select the token above and copy it manually.'
   }
 }
 
@@ -53,17 +58,18 @@ onBeforeUnmount(() => {
 
 const origin = useRequestURL().origin
 
-const backendSnippet = computed(() => `terraform {
-  backend "http" {
-    address        = "${origin}/api/tf/ORG/PROJECT"
-    lock_address   = "${origin}/api/tf/ORG/PROJECT/lock"
-    unlock_address = "${origin}/api/tf/ORG/PROJECT/lock"
-    lock_method    = "POST"
-    unlock_method  = "DELETE"
-    username       = "statesman"
-    password       = "${props.token?.key ?? ''}"
-  }
-}`)
+// ORG/PROJECT stay placeholders here: a token can be scoped to several
+// projects, so this modal cannot know which one the reader means. The project
+// reveal fills them in for real. The block itself comes from the one builder
+// both share, so the verbs cannot drift apart.
+const snippet = computed(() =>
+  backendSnippet({
+    origin,
+    org: 'ORG',
+    project: 'PROJECT',
+    password: props.token?.key ?? ''
+  })
+)
 </script>
 
 <template>
@@ -118,7 +124,7 @@ const backendSnippet = computed(() => `terraform {
           <pre
             class="overflow-x-auto rounded-lg bg-muted p-3 text-xs [overscroll-behavior-x:contain]"
             translate="no"
-          ><code>{{ backendSnippet }}</code></pre>
+          ><code>{{ snippet }}</code></pre>
         </div>
       </div>
     </template>

@@ -8,7 +8,7 @@ import { $fetch, url as absoluteUrl, useTestContext } from '@nuxt/test-utils/e2e
 import { auth } from '../../server/utils/auth'
 import type { StateStore } from '../../server/storage/types'
 import { listVersions } from '../../server/services/state'
-import { seedProject, resetDb } from '../protocol/helpers'
+import { seedOrg, resetDb } from '../protocol/helpers'
 
 const FIXTURE = fileURLToPath(new URL('fixture', import.meta.url))
 const PROJECT = 'prod'
@@ -125,15 +125,39 @@ export function terraformAcceptance(options: ScenarioOptions): void {
       for (const key of await options.store.list(`${options.org}/`)) {
         await options.store.delete(key)
       }
-      projectId = await seedProject(options.org, PROJECT)
+      // The ORGANIZATION is provisioned once per deployment (spec §5). The
+      // PROJECT is not seeded here on purpose: it is created below through the
+      // same dashboard endpoint an operator uses, so this run proves a freshly
+      // deployed statesman is usable without anyone shelling in.
+      await seedOrg(options.org)
 
+      const email = `tf-${options.driver}-${Date.now()}@example.com`
+      const password = 'correct horse battery'
       const user = await auth.api.signUpEmail({
-        body: {
-          email: `tf-${options.driver}-${Date.now()}@example.com`,
-          password: 'correct horse battery',
-          name: 'Terraform acceptance'
-        }
+        body: { email, password, name: 'Terraform acceptance' }
       })
+
+      // A real browser session, taken over HTTP, because that is what guards
+      // the create endpoint.
+      const signIn = await fetch(absoluteUrl('/api/auth/sign-in/email'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      await signIn.text()
+      const cookie = signIn.headers
+        .getSetCookie()
+        .map((c) => c.split(';')[0])
+        .join('; ')
+
+      const created = await $fetch('/api/ui/projects', {
+        method: 'POST',
+        headers: { cookie },
+        body: { org: options.org, project: PROJECT }
+      })
+      expect(created).toMatchObject({ org: options.org, slug: PROJECT })
+      projectId = created.id
+
       const key = await auth.api.createApiKey({
         body: {
           userId: user.user.id,
@@ -152,7 +176,7 @@ export function terraformAcceptance(options: ScenarioOptions): void {
       if (dir) await rm(dir, { recursive: true, force: true })
     })
 
-    it('initialises against the http backend', async () => {
+    it('initialises against a project created through the dashboard api', async () => {
       const run = await tf('init', '-no-color')
       expect(run.combined).toContain('Terraform has been successfully initialized')
       expect(run.code).toBe(0)

@@ -319,3 +319,78 @@ describe('a failing audit write', () => {
     await expect($fetch(url, { headers: authHeader() })).rejects.toMatchObject({ statusCode: 404 })
   })
 })
+
+/**
+ * Nothing in the application used to create a project. The dashboard only read
+ * them, the Terraform router answers 404 for one it does not know (spec §9), and
+ * the only insert anywhere was in the seed script — so a freshly deployed
+ * statesman answered 404 to every `terraform init` until an operator shelled in.
+ */
+describe('project creation', () => {
+  // No generic: Nitro types the route from the handler, so the response shape
+  // is derived from the server rather than restated here.
+  const create = (body: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    $fetch('/api/ui/projects', { method: 'POST', headers, body })
+
+  it('rejects an anonymous create', async () => {
+    await expect(create({ org: 'acme', project: 'anonymous' })).rejects.toMatchObject({
+      statusCode: 401
+    })
+  })
+
+  it('creates a project that then appears in the project list', async () => {
+    const created = await create(
+      { org: 'acme', project: 'created-here' },
+      {
+        cookie: sessionCookie
+      }
+    )
+    expect(created).toMatchObject({ org: 'acme', slug: 'created-here' })
+
+    const list = await $fetch('/api/ui/projects', { headers: { cookie: sessionCookie } })
+    expect(list.map((p) => `${p.org}/${p.slug}`)).toContain('acme/created-here')
+  })
+
+  it('is immediately usable by terraform rather than still 404', async () => {
+    await create({ org: 'acme', project: 'usable' }, { cookie: sessionCookie })
+    // A token scoped to acme/prod cannot reach it, and 403 — not 404 — is the
+    // proof the project now resolves.
+    await expect($fetch('/api/tf/acme/usable', { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 403
+    })
+  })
+
+  it('answers 409 for a duplicate slug in the same org, not 500', async () => {
+    await create({ org: 'acme', project: 'twice' }, { cookie: sessionCookie })
+    await expect(
+      create({ org: 'acme', project: 'twice' }, { cookie: sessionCookie })
+    ).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rejects a slug the router could never resolve', async () => {
+    // Every one of these would either fail projectRefSchema on the way back in
+    // or escape a blob-key prefix.
+    for (const project of ['Uppercase', 'has/slash', '..', '-leading-dash', 'trailing ', '']) {
+      await expect(
+        create({ org: 'acme', project }, { cookie: sessionCookie })
+      ).rejects.toMatchObject({ statusCode: 400 })
+    }
+  })
+
+  it('answers 404 for an unknown organization', async () => {
+    await expect(
+      create({ org: 'no-such-org', project: 'anything' }, { cookie: sessionCookie })
+    ).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  it('records the creation in the audit log', async () => {
+    const created = await create(
+      { org: 'acme', project: 'audited' },
+      {
+        cookie: sessionCookie
+      }
+    )
+    const rows = await db().select().from(auditLog).where(eq(auditLog.projectId, created.id))
+    expect(rows.map((r) => r.action)).toContain('project.create')
+  })
+})

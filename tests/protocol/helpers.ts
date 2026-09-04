@@ -2,7 +2,13 @@ import { eq, inArray } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import { db } from '../../server/db/client'
 import {
-  organization, project, stateVersion, projectState, stateLock, auditLog, user
+  organization,
+  project,
+  stateVersion,
+  projectState,
+  stateLock,
+  auditLog,
+  user
 } from '../../server/db/schema'
 import { store } from '../../server/storage'
 
@@ -48,25 +54,35 @@ export async function resetDb(orgSlug: string): Promise<void> {
 }
 
 /**
- * organization.slug is unique, so seeding a second project under an org that
- * already exists has to reuse it rather than insert a duplicate.
+ * organization.slug is unique, so seeding twice under an org that already exists
+ * has to reuse it rather than insert a duplicate.
+ *
+ * Separate from seedProject because the two are different things: an
+ * organization is provisioned once per deployment (spec §5), while a project is
+ * created through `POST /api/ui/projects`. A test that wants to exercise that
+ * endpoint still needs the organization to exist first.
  */
-export async function seedProject(orgSlug: string, projectSlug: string): Promise<string> {
+export async function seedOrg(orgSlug: string): Promise<string> {
   const existing = await db()
     .select({ id: organization.id })
     .from(organization)
     .where(eq(organization.slug, orgSlug))
   const found = existing[0]
-  let orgId: string
-  if (found) {
-    orgId = found.id
-  } else {
-    orgId = ulid()
-    await db().insert(organization).values({ id: orgId, name: orgSlug, slug: orgSlug })
-  }
+  if (found) return found.id
+
+  const orgId = ulid()
+  await db().insert(organization).values({ id: orgId, name: orgSlug, slug: orgSlug })
+  return orgId
+}
+
+export async function seedProject(orgSlug: string, projectSlug: string): Promise<string> {
+  const orgId = await seedOrg(orgSlug)
   const projectId = ulid()
   await db().insert(project).values({
-    id: projectId, orgId, name: projectSlug, slug: projectSlug
+    id: projectId,
+    orgId,
+    name: projectSlug,
+    slug: projectSlug
   })
   return projectId
 }
