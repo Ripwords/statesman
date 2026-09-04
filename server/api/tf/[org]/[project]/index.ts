@@ -1,4 +1,4 @@
-import { authorizeTf } from '../../../../utils/tf-auth'
+import { authenticateTf, authorizeTf } from '../../../../utils/tf-auth'
 import {
   refFromEvent,
   resolveProject,
@@ -20,9 +20,13 @@ export default defineEventHandler(async (event) => {
   const action = ACTION_FOR_METHOD[method]
   if (!action) throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })
 
+  // Spec §9 order, and it is load-bearing: credentials first, so an anonymous
+  // caller cannot tell an existing project (401) from a missing one (404) and
+  // no unauthenticated request reaches the database.
+  const principal = await authenticateTf(event)
   const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
-  const principal = await authorizeTf(event, ref, action)
+  authorizeTf(principal, ref, action)
 
   if (method === 'GET') {
     const body = await readCurrentState(resolved.id)

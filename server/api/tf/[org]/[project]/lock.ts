@@ -1,4 +1,4 @@
-import { authorizeTf } from '../../../../utils/tf-auth'
+import { authenticateTf, authorizeTf } from '../../../../utils/tf-auth'
 import {
   refFromEvent,
   resolveProject,
@@ -18,9 +18,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })
   }
 
+  // Same guard, same order as the base path (spec §9); never re-implemented.
+  const principal = await authenticateTf(event)
   const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
-  const principal = await authorizeTf(event, ref, 'lock')
+  authorizeTf(principal, ref, 'lock')
 
   return ACQUIRE.has(method)
     ? handleLockAcquire(event, resolved, principal)
