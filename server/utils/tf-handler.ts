@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/client'
 import { organization, project } from '../db/schema'
-import { acquireLock, releaseLock } from '../services/lock'
+import { acquireLock, releaseLock, currentLock } from '../services/lock'
 import { recordAuditBestEffort } from '../services/audit'
 import { lockInfoSchema, type LockInfo } from '../../shared/schemas/lock'
 import { projectRefSchema, type ProjectRef } from '../../shared/schemas/project'
@@ -106,19 +106,51 @@ export async function handleLockAcquire(
   return { ok: true }
 }
 
+/**
+ * Releasing answered `{ok: true}` 200 whatever it was given, including a lock id
+ * that matched nothing — so `terraform force-unlock <wrong-id>` reported success
+ * while the lock survived, which is the worst possible answer to that command.
+ *
+ * The two failures are not the same, and only one of them is an error:
+ *
+ * - No lock at all is 200. It is the state the caller asked for, and Terraform
+ *   sends UNLOCK at the end of a successful apply — answering non-200 because
+ *   someone force-unlocked in the meantime would fail a run that worked.
+ * - A lock held under a DIFFERENT id is 409, with the holder's info as the
+ *   body, the same shape and status the write path uses for the same mistake
+ *   (spec §11). Terraform surfaces a non-200 unlock body verbatim, so the
+ *   operator sees which lock is actually held.
+ */
 export async function handleLockRelease(
   event: H3Event,
   resolved: ResolvedProject,
   principal: TfPrincipal
-): Promise<{ ok: true }> {
+): Promise<{ ok: true } | LockInfo> {
   const info = await readLockInfo(event)
+  const held = await currentLock(resolved.id)
+
+  if (held && held.ID !== info.ID) {
+    await recordAuditBestEffort({
+      orgId: resolved.orgId,
+      projectId: resolved.id,
+      actorType: 'api-key',
+      actorId: principal.keyId,
+      action: 'lock.release_mismatch',
+      meta: { lockId: info.ID, heldBy: held.ID }
+    })
+    setResponseStatus(event, 409)
+    return held
+  }
+
+  // `released` can be false even after a matching read, if the holder released
+  // between the two. The end state is the one that was asked for either way.
   const released = await releaseLock(resolved.id, info.ID)
   await recordAuditBestEffort({
     orgId: resolved.orgId,
     projectId: resolved.id,
     actorType: 'api-key',
     actorId: principal.keyId,
-    action: released ? 'lock.release' : 'lock.release_mismatch',
+    action: released ? 'lock.release' : 'lock.release_noop',
     meta: { lockId: info.ID }
   })
   return { ok: true }
