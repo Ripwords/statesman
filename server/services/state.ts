@@ -105,6 +105,24 @@ export async function listVersions(projectId: string, limit = 100): Promise<Stat
     .limit(limit)
 }
 
+/**
+ * Why a class and not a message: the endpoint has to map a lock conflict to 409
+ * and a missing version to 404, and it used to do that by regex-matching the
+ * message text. Rewording a throw would then have silently turned a 409 into a
+ * 404. The reason is now part of the type.
+ */
+export type RollbackFailureReason = 'locked' | 'version-not-found'
+
+export class RollbackError extends Error {
+  readonly reason: RollbackFailureReason
+
+  constructor(reason: RollbackFailureReason, message: string) {
+    super(message)
+    this.name = 'RollbackError'
+    this.reason = reason
+  }
+}
+
 export async function rollbackTo(args: {
   projectId: string
   orgSlug: string
@@ -115,11 +133,16 @@ export async function rollbackTo(args: {
   // Rolling back under an active lock would race a running apply.
   const held = await currentLock(args.projectId)
   if (held) {
-    throw new Error(`State is locked by ${held.Who ?? 'another process'}; release it first`)
+    throw new RollbackError(
+      'locked',
+      `State is locked by ${held.Who ?? 'another process'}; release it first`
+    )
   }
 
   const body = await readVersion(args.versionId)
-  if (!body) throw new Error(`Version not found: ${args.versionId}`)
+  if (!body) {
+    throw new RollbackError('version-not-found', `Version not found: ${args.versionId}`)
+  }
 
   // A new version carrying old bytes. History is append-only (spec §10), so a
   // rollback is itself a recorded event rather than an erasure of one.

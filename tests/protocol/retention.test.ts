@@ -76,7 +76,9 @@ describe('retention', () => {
     // the only rows that are past BOTH the count and the 30-day window.
     expect(result.prunedVersions).toBe(5)
     expect(result.sweptBlobs).toBe(0)
-    expect(await listVersions(projectId)).toHaveLength(100)
+    // An explicit limit above the expected count: listVersions defaults to
+    // limit 100, which cannot tell 100 remaining from 150 remaining.
+    expect(await listVersions(projectId, 500)).toHaveLength(100)
     expect(await readCurrentState(projectId)).toEqual(body(9))
   })
 })

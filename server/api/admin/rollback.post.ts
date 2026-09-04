@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { auth } from '../../utils/auth'
 import { db } from '../../db/client'
 import { project, organization } from '../../db/schema'
-import { rollbackTo } from '../../services/state'
+import { RollbackError, rollbackTo } from '../../services/state'
 import { recordAudit } from '../../services/audit'
 
 const bodySchema = z.object({ projectId: z.string().min(1), versionId: z.string().min(1) })
@@ -43,7 +43,15 @@ export default defineEventHandler(async (event) => {
     })
     return result
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Rollback failed'
-    throw createError({ statusCode: /locked/i.test(message) ? 409 : 404, statusMessage: message })
+    // Only the two modelled failures are translated. Anything else — a storage
+    // or database fault — propagates as a 500, which is what spec §11 asks for
+    // and what the old catch-all silently reported as 404.
+    if (error instanceof RollbackError) {
+      throw createError({
+        statusCode: error.reason === 'locked' ? 409 : 404,
+        statusMessage: error.message
+      })
+    }
+    throw error
   }
 })
