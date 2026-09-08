@@ -15,9 +15,9 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "postinstall": "nuxt prepare",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "vitest run tests/e2e",
+    "test": "tsx scripts/test-db.ts && vitest run",
+    "test:watch": "tsx scripts/test-db.ts && vitest",
+    "test:e2e": "tsx scripts/test-db.ts && vitest run tests/e2e",
     "typecheck": "vue-tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -25,7 +25,8 @@
     "user:create": "tsx scripts/user-create.ts",
     "gen:key": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "prepare": "husky",
-    "dev:setup": "docker compose up -d --wait postgres minio && docker compose run --rm createbucket && pnpm db:migrate && pnpm db:seed"
+    "dev:setup": "docker compose up -d --wait postgres minio && docker compose run --rm createbucket && pnpm db:migrate && pnpm db:seed",
+    "db:migrate:test": "tsx scripts/test-db.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
