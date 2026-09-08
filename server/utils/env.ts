@@ -62,6 +62,7 @@ const schema = z
     S3_SECRET_ACCESS_KEY: z.string().optional(),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.string().min(1),
+    CRON_SECRET: z.string().optional(),
     RETENTION_KEEP_VERSIONS: z.coerce.number().int().positive().default(100),
     RETENTION_KEEP_DAYS: z.coerce.number().int().positive().default(30),
     VERCEL: z.string().optional(),
@@ -97,6 +98,7 @@ export type Env = {
   S3_SECRET_ACCESS_KEY?: string
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
+  CRON_SECRET?: string
   RETENTION_KEEP_VERSIONS: number
   RETENTION_KEEP_DAYS: number
   IS_SERVERLESS: boolean
@@ -125,6 +127,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     S3_SECRET_ACCESS_KEY: v.S3_SECRET_ACCESS_KEY,
     BETTER_AUTH_SECRET: v.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: v.BETTER_AUTH_URL,
+    CRON_SECRET: v.CRON_SECRET,
     RETENTION_KEEP_VERSIONS: v.RETENTION_KEEP_VERSIONS,
     RETENTION_KEEP_DAYS: v.RETENTION_KEEP_DAYS,
     IS_SERVERLESS: Boolean(v.VERCEL || v.AWS_LAMBDA_FUNCTION_NAME)

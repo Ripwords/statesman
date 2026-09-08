@@ -21,7 +21,21 @@ export default defineNuxtConfig({
     experimental: { tasks: true },
     // Off-peak and off the hour, so a fleet of deployments does not all sweep
     // their blob stores at 03:00 exactly.
-    scheduledTasks: { '17 3 * * *': ['retention'] }
+    scheduledTasks: { '17 3 * * *': ['retention'] },
+    vercel: {
+      config: {
+        /**
+         * The same 03:17, for the deployment that has no scheduler of its own.
+         *
+         * This has to live here rather than in vercel.json. The Vercel preset
+         * emits Build Output API v3, and Nitro assembles
+         * `.vercel/output/config.json` itself — it opens vercel.json only to
+         * read `bunVersion`, so a `crons` entry there is silently dropped and
+         * retention never runs. Verified by grepping the generated config.
+         */
+        crons: [{ path: '/api/admin/retention', schedule: '17 3 * * *' }]
+      }
+    }
   },
   typescript: { strict: true, typeCheck: true }
 })
