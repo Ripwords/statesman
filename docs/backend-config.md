@@ -71,21 +71,23 @@ There is no public sign-up. `POST /api/auth/sign-up/email` is refused, and
 accounts are created by the operator:
 
 ```bash
-pnpm user:create you@example.com "Your Name"
+pnpm user:create you@example.com "Your Name" [--role admin|member]
 ```
 
 It reads `DATABASE_URL` and `BETTER_AUTH_SECRET` and nothing else — in
 particular not `STATESMAN_ENCRYPTION_KEY`, so it can run in a migration
 container without handing it the key that decrypts state. Pass
 `STATESMAN_USER_PASSWORD` to choose the password, or let it generate one and
-print it once.
+print it once. The first account on a deployment is always an admin; later ones
+default to `member`.
 
-**Every account sees every project.** Session-guarded routes check that a
-session exists and nothing finer: there are no roles, no ownership, and no
-per-project permissions, because one deployment serves one organization. An
-account is therefore read access to the plaintext of every state file in the
-deployment. Scoped API tokens, below, are the finer-grained control, and they
-are for machines rather than people.
+**Every account sees every project, whichever role it holds.** The admin/member
+split decides who may change things — projects, tokens, locks, history,
+accounts — not who may see them. There is no ownership and there are no
+per-project permissions, because one deployment serves one organization, so an
+account of either role is read access to the plaintext of every state file in
+the deployment. Scoped API tokens, below, are the finer-grained control, and
+they are for machines rather than people.
 
 ---
 
@@ -93,7 +95,7 @@ are for machines rather than people.
 
 A backend address only resolves for a project that already exists. Create one on
 the dashboard's project list (*New Project*), which shows the finished backend
-block, or over HTTP:
+block, or over HTTP. Both need an admin session:
 
 ```bash
 curl -X POST https://statesman.example.com/api/ui/projects \

@@ -30,6 +30,9 @@ There is no sign-up page. Create your account from the command line:
 pnpm user:create you@example.com     # prints a generated password, once
 ```
 
+The first account is always an admin. Later ones are members unless you add
+`--role admin` — see [Roles](#roles-and-what-every-account-can-still-read).
+
 Then sign in at http://localhost:3000 and:
 
 1. **New Project** on the project list. It hands you the exact backend block for
@@ -90,29 +93,54 @@ because it removes the platform question entirely.
 
 ---
 
-## Everyone you create can read every project
+## Roles, and what every account can still read
 
 There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
 accounts exist only because an operator ran `pnpm user:create`, which needs
 database access and `BETTER_AUTH_SECRET`.
 
-That matters, because **every account can see everything**: the project list,
-the version timeline, the decrypted diff, force unlock, rollback, and token
-creation are all guarded by "is there a session" and nothing finer. There are no
-roles, no per-project permissions, and no ownership.
+There are two roles:
 
-That is the intended model, not a gap. One deployment serves one organization,
-so the accounts are the people trusted with that organization's state — but the
-consequence is worth stating plainly:
+|                                  | admin | member |
+| -------------------------------- | ----- | ------ |
+| Read projects, versions, diffs   | yes   | yes    |
+| Create projects                  | yes   | no     |
+| Force unlock, roll back          | yes   | no     |
+| Create and revoke tokens         | yes   | no     |
+| Manage accounts and roles        | yes   | no     |
+| Reset another account's password | yes   | no     |
+| Run retention on demand          | yes   | no     |
 
-> Creating an account grants read access to the **plaintext** of every state
-> file in the deployment, including the provider credentials and database
-> passwords inside them. If some people should see only some projects, run a
-> second deployment; do not give them an account here.
+The first account on a deployment is always an admin — nothing else could
+promote it — and every account after that is a member unless you pass
+`--role admin`. The last admin cannot be demoted, because the deployment would
+be left with nobody able to manage accounts, tokens or locks and no endpoint
+that could undo it.
+
+**The split is about who may change things, not about who may see them.** Both
+roles read every project's decrypted state, and there are still no per-project
+permissions and no ownership:
+
+> Creating an account of either role grants read access to the **plaintext** of
+> every state file in the deployment, including the provider credentials and
+> database passwords inside them. If some people should see only some projects,
+> run a second deployment; do not give them an account here.
 
 Scoped API tokens are the finer-grained control, and they are for machines: a
 token names the exact projects and operations it may use, so a CI runner can be
 given far less than a person.
+
+### Passwords
+
+`pnpm user:create` prints a generated password once. Anyone can change their own
+under **Account → Change Password**, which asks for the current one and signs
+out every other session. An admin can reset someone else's from **Users**, which
+generates one, shows it once, and ends that account's sessions immediately — but
+never their own, because a reset does not ask for the current password and that
+is not a door to leave open on the account you are signed in as.
+
+There is no email recovery: statesman sends no mail. If every admin is locked
+out, `pnpm user:create` from a machine with database access is the way back.
 
 ---
 
@@ -193,13 +221,19 @@ answer.
   Terraform 1.14.9; it is how `httpClient.Lock` builds the error. The holder's
   name is in the response and is shown in the dashboard's lock banner, so that
   is where to look for _who_, and force-unlock is also a button there.
-- **Creating an account** is `pnpm user:create <email> [name]`. It needs only
-  `DATABASE_URL` and `BETTER_AUTH_SECRET` — deliberately not the encryption key
-  — so it runs from an operator machine or the migration container.
+- **Creating an account** is `pnpm user:create <email> [name] [--role admin|member]`.
+  It needs only `DATABASE_URL` and `BETTER_AUTH_SECRET` — deliberately not the
+  encryption key — so it runs from an operator machine or the migration
+  container. The role defaults to `member`, except on a deployment with no admin
+  yet, where it makes one and says so.
 - **Retention** runs as a scheduled task at 03:17 daily on a long-running
-  server. Nitro has no scheduler on serverless, so a Vercel deployment must
-  trigger `POST /api/admin/retention` itself; see the deployment guide.
-- **Creating a project** is `POST /api/ui/projects` — session-guarded, body
+  server. Nitro has no scheduler on serverless, so a Vercel deployment needs an
+  external trigger: set `CRON_SECRET` and the bundled `vercel.json` cron calls
+  `GET /api/admin/retention` with it at the same 03:17. Without that variable
+  the GET route is a 404, so an unset secret never becomes an open endpoint.
+  `POST /api/admin/retention` is the manual, admin-only trigger on any
+  deployment.
+- **Creating a project** is `POST /api/ui/projects` — admin-only, body
   `{ "org": "acme", "project": "myapp-prod" }`, with `org` optional on a
   single-organization deployment. A duplicate is a 409, a slug the router could
   not resolve is a 400. `pnpm db:seed` is the same thing without a browser.

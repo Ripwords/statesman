@@ -43,6 +43,7 @@ environment the project deploys.
 | `S3_ACCESS_KEY_ID` | yes on Vercel | there is no instance role to fall back to |
 | `S3_SECRET_ACCESS_KEY` | yes on Vercel | |
 | `S3_FORCE_PATH_STYLE` | no | `false` unless your endpoint needs it |
+| `CRON_SECRET` | for retention | any long random value, `openssl rand -base64 32`. Vercel sends it to the scheduled job; without it retention never runs here |
 | `RETENTION_KEEP_VERSIONS` | no | defaults to `100` |
 | `RETENTION_KEEP_DAYS` | no | defaults to `30` |
 
@@ -73,6 +74,14 @@ Two consequences worth knowing before you rely on it:
   additive, so the previous version keeps working, but that is a property to
   preserve rather than assume.
 
+> **Upgrading a deployment that already has accounts:** migration `0001` adds
+> roles and sets every existing account to `admin`. That is deliberate — before
+> it, every account already had every power the dashboard offers, and defaulting
+> them to `member` would demote your whole team at once with no admin left to
+> undo it. After deploying, open **Users** and demote whoever should be a
+> member. New accounts default to `member` from then on.
+
+
 ## 4. Seed the organization
 
 The organization is a deployment-level thing (spec §5) and nothing in the app
@@ -90,7 +99,7 @@ Seeded project: acme/prod
 
 **Projects, after this, are made in the dashboard** — *New Project* on the
 project list, which hands you the backend block for it — or through
-`POST /api/ui/projects`. Nothing is created implicitly: an address statesman
+`POST /api/ui/projects`. Both need an admin account. Nothing is created implicitly: an address statesman
 does not recognise is a 404, so a typo in `address` fails loudly rather than
 silently splitting a team's state across two projects.
 
@@ -127,9 +136,13 @@ DATABASE_URL='postgres://...' BETTER_AUTH_SECRET='...' \
   pnpm user:create you@example.com "Your Name"
 ```
 
-> **Every account you create can read every project**, including the decrypted
-> plaintext of every state file. There are no roles and no per-project
-> permissions — see the README.
+The first account is always an admin; later ones are members unless you add
+`--role admin`.
+
+> **Every account you create can read every project**, whichever role it has,
+> including the decrypted plaintext of every state file. The admin/member split
+> governs who may CHANGE things, not who may see them, and there are still no
+> per-project permissions — see the README.
 
 Then sign in at your domain, mint a token on the **Tokens** page, and:
 
@@ -173,21 +186,36 @@ it to.
 
 ---
 
-## Retention does not run on its own here
+## Retention runs from Vercel Cron
 
 Nitro's scheduler needs a process that stays alive, and a serverless function
-does not. The retention task ships and is skipped: nothing prunes old versions
-or sweeps orphaned blobs unless something calls it.
+does not. The in-process task ships and is skipped here, so retention runs from
+the platform's scheduler instead. `vercel.json` already carries the job:
 
-Trigger it externally against `POST /api/admin/retention`. It is session-guarded
-like the rest of `/api/ui/*`, so a caller needs a signed-in cookie — a small
-scheduled job that signs in with an operator account and posts once a day is the
-straightforward approach. Vercel Cron cannot do this on its own, because it
-sends an unauthenticated GET.
+```json
+{
+  "crons": [{ "path": "/api/admin/retention", "schedule": "17 3 * * *" }]
+}
+```
 
-Until that job exists, treat `RETENTION_KEEP_VERSIONS` and
-`RETENTION_KEEP_DAYS` as inert on this deployment, and expect the bucket to
-grow by one object per apply forever.
+**Set `CRON_SECRET` in the project's environment variables.** Vercel then sends
+`Authorization: Bearer $CRON_SECRET` with every cron request, and
+`GET /api/admin/retention` checks it. There is nothing else to wire up.
+
+Two things worth knowing:
+
+- **Without `CRON_SECRET`, that route answers 404** and nothing prunes old
+  versions or sweeps orphaned blobs — the bucket grows by one object per apply,
+  forever. The 404 is deliberate: an unset secret must never leave an
+  unauthenticated endpoint that deletes state history, and a 401 would advertise
+  a door no credential could open.
+- **Hobby projects run crons about once a day at an unspecified time**; Pro and
+  Enterprise honour the schedule. Retention is idempotent and thresholds are
+  generous, so an imprecise hour costs nothing.
+
+`POST /api/admin/retention` still exists for a manual run, guarded by an admin
+session rather than the secret. Any other scheduler can use the GET route too —
+it is an ordinary bearer token, not something Vercel-specific.
 
 ---
 

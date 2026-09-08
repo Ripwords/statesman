@@ -1,7 +1,14 @@
 # statesman — Design Spec
 
 **Date:** 2026-09-04
-**Status:** Approved for planning
+**Status:** Implemented. Superseded in part — see the note below.
+
+> **Later change, 2026-09-08.** §4 below says there are no roles and every
+> session is equal. That is no longer true: accounts now hold `admin` or
+> `member`, and the routes that change things are admin-only. What has NOT
+> changed is the sentence that matters most — both roles still read every
+> project's decrypted state, and there are still no per-project permissions.
+> The README is the current description.
 
 A self-hostable Terraform/OpenTofu HTTP state backend with encrypted state at
 rest, full version history, and scoped API tokens.

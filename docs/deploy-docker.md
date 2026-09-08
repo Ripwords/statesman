@@ -105,6 +105,12 @@ the first `terraform apply` rather than at deploy time. The container's own
 healthcheck runs the same endpoint, so `docker compose ps` reports `(healthy)`
 only when state can actually be stored.
 
+> **Upgrading a deployment that already has accounts?** Migration `0001` adds
+> roles and sets every existing account to `admin`, because before it they all
+> already had every power the dashboard offers and a silent demotion would have
+> left nobody able to undo it. After upgrading, open **Users** and demote
+> whoever should be a member.
+
 Then create your account — there is no sign-up page, by design:
 
 ```bash
@@ -113,22 +119,32 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 ```
 
 ```
-Created user: you@example.com
+Created user: you@example.com (admin)
+First account on this deployment, so it is an admin.
 Password: <printed once>
 ```
 
-The password is shown once and there is no password-change screen. Store it in
-a password manager. To rotate it, run `pnpm user:create` again with a different
-email and remove the old account, or call Better Auth's change-password
-endpoint directly.
+The first account is always an admin, because nothing else could promote it.
+Later accounts are members unless you add `--role admin`:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml \
+  run --rm migrate pnpm user:create them@example.com "Their Name" --role member
+```
+
+The password is shown once. Store it in a password manager — they can change it
+themselves under **Account → Change Password**, and any admin can reset it from
+**Users** if they lose it. There is no email recovery; statesman sends no mail.
 
 Pass `-e STATESMAN_USER_PASSWORD=…` to choose the password instead of having one
 generated. The command needs `DATABASE_URL` and `BETTER_AUTH_SECRET`, which the
 migrate service has, and deliberately not the encryption key.
 
-> **Every account you create can read every project**, including the decrypted
-> plaintext of every state file. There are no roles and no per-project
-> permissions — see the README. Give people accounts accordingly.
+> **Every account you create can read every project**, whichever role it has,
+> including the decrypted plaintext of every state file. The admin/member split
+> governs who may CHANGE things — accounts, tokens, locks, history — not who may
+> see them, and there are still no per-project permissions. See the README, and
+> give people accounts accordingly.
 
 Now sign in at the app's URL, mint a token on the **Tokens** page, and run the
 real thing:
