@@ -1,6 +1,6 @@
 # statesman Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Ship a self-hostable Terraform HTTP state backend with encrypted state at rest, full version history, and scoped API tokens.
 
@@ -141,7 +141,7 @@
 - Consumes: nothing
 - Produces: `loadEnv(source?: NodeJS.ProcessEnv): Env` — throws on invalid config. `type Env` with fields `DATABASE_URL: string`, `DB_DRIVER: 'neon' | 'node'`, `STORAGE_DRIVER: 's3' | 'local'`, `ENCRYPTION_KEY: Buffer`, `LOCAL_STORAGE_PATH: string`, `S3_BUCKET?: string`, `S3_ENDPOINT?: string`, `S3_REGION: string`, `S3_ACCESS_KEY_ID?: string`, `S3_SECRET_ACCESS_KEY?: string`, `BETTER_AUTH_SECRET: string`, `BETTER_AUTH_URL: string`, `RETENTION_KEEP_VERSIONS: number`, `RETENTION_KEEP_DAYS: number`, `IS_SERVERLESS: boolean`
 
-- [ ] **Step 1: Initialise the project**
+- [x] **Step 1: Initialise the project**
 
 ```bash
 cd /Users/jiajingteoh/Documents/statesman
@@ -152,7 +152,7 @@ pnpm add nuxt@4.5.2 @nuxt/ui@4.11.0 zod@4.5.4 better-auth@1.7.2 \
 pnpm add -D vitest @vitest/coverage-v8 drizzle-kit @types/pg typescript vue-tsc
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 // tests/unit/env.test.ts
@@ -200,12 +200,12 @@ describe('loadEnv', () => {
 })
 ```
 
-- [ ] **Step 3: Run it and confirm it fails**
+- [x] **Step 3: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/unit/env.test.ts`
 Expected: FAIL — cannot resolve `server/utils/env`.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // server/utils/env.ts
@@ -318,19 +318,19 @@ export function env(): Env {
 }
 ```
 
-- [ ] **Step 5: Add the key generator**
+- [x] **Step 5: Add the key generator**
 
 ```json
 // package.json — scripts
 "gen:key": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\""
 ```
 
-- [ ] **Step 6: Run tests and confirm they pass**
+- [x] **Step 6: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/unit/env.test.ts`
 Expected: 5 passed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
@@ -349,7 +349,7 @@ git commit -m "feat: scaffold project with validated environment config"
 - Consumes: `Env.ENCRYPTION_KEY`
 - Produces: `seal(key: Buffer, plaintext: Uint8Array): Buffer`, `open(key: Buffer, sealed: Uint8Array): Buffer`. Wire format: `[12-byte IV][16-byte GCM tag][ciphertext]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/unit/crypto.test.ts
@@ -387,12 +387,12 @@ describe('crypto', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/unit/crypto.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // server/utils/crypto.ts
@@ -423,12 +423,12 @@ export function open(key: Buffer, sealed: Uint8Array): Buffer {
 }
 ```
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/unit/crypto.test.ts`
 Expected: 5 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/utils/crypto.ts tests/unit/crypto.test.ts
@@ -447,7 +447,7 @@ git commit -m "feat: add AES-256-GCM sealing for state at rest"
 - Consumes: `env()`
 - Produces: tables `organization`, `project`, `stateVersion`, `projectState`, `stateLock`, `auditLog`, plus Better Auth's `user`, `session`, `account`, `verification`, `apikey`. Exports `db()` returning a Drizzle instance typed against the full schema.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/integration/db.test.ts
@@ -478,12 +478,12 @@ describe('database', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/integration/db.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the schema**
+- [x] **Step 3: Implement the schema**
 
 ```ts
 // server/db/schema.ts
@@ -639,7 +639,7 @@ export const schema = {
 }
 ```
 
-- [ ] **Step 4: Implement the driver switch**
+- [x] **Step 4: Implement the driver switch**
 
 ```ts
 // server/db/client.ts
@@ -668,7 +668,7 @@ export function db(): Database {
 
 Both branches expose the same query builder for everything this project uses. Neon's HTTP driver does not support interactive transactions; no code path in this project requires one, because the lock is a single atomic `INSERT ... ON CONFLICT` rather than a read-then-write.
 
-- [ ] **Step 5: Create the development database**
+- [x] **Step 5: Create the development database**
 
 Task C1 writes the full compose stack, but Phase 0 needs Postgres now. Create the
 minimum here and let C1 extend it:
@@ -704,7 +704,7 @@ volumes:
   miniodata:
 ```
 
-- [ ] **Step 6: Generate and apply migrations**
+- [x] **Step 6: Generate and apply migrations**
 
 ```bash
 docker compose up -d postgres
@@ -712,12 +712,12 @@ pnpm drizzle-kit generate
 pnpm drizzle-kit migrate
 ```
 
-- [ ] **Step 7: Run tests and confirm they pass**
+- [x] **Step 7: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/integration/db.test.ts`
 Expected: 2 passed.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -736,7 +736,7 @@ git commit -m "feat: add drizzle schema and dual-driver database client"
 - Consumes: `env()`
 - Produces: `interface StateStore { put(key, data): Promise<void>; get(key): Promise<Uint8Array | null>; delete(key): Promise<void>; list(prefix): Promise<string[]> }` and `store(): StateStore`. `get` returns `null` for a missing key — it never throws for absence.
 
-- [ ] **Step 1: Write the shared conformance suite**
+- [x] **Step 1: Write the shared conformance suite**
 
 ```ts
 // tests/integration/storage.conformance.ts
@@ -786,7 +786,7 @@ export function conformsToStateStore(name: string, make: () => Promise<StateStor
 }
 ```
 
-- [ ] **Step 2: Wire both drivers into the suite**
+- [x] **Step 2: Wire both drivers into the suite**
 
 ```ts
 // tests/integration/storage.test.ts
@@ -820,12 +820,12 @@ conformsToStateStore('s3 (minio)', async () =>
 )
 ```
 
-- [ ] **Step 3: Run and confirm both fail**
+- [x] **Step 3: Run and confirm both fail**
 
 Run: `pnpm vitest run tests/integration/storage.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 4: Implement the interface and local driver**
+- [x] **Step 4: Implement the interface and local driver**
 
 ```ts
 // server/storage/types.ts
@@ -899,7 +899,7 @@ export class LocalStore implements StateStore {
 }
 ```
 
-- [ ] **Step 5: Implement the S3 driver**
+- [x] **Step 5: Implement the S3 driver**
 
 ```ts
 // server/storage/s3.ts
@@ -992,7 +992,7 @@ export class S3Store implements StateStore {
 }
 ```
 
-- [ ] **Step 6: Implement the switch**
+- [x] **Step 6: Implement the switch**
 
 ```ts
 // server/storage/index.ts
@@ -1025,12 +1025,12 @@ export type { StateStore } from './types'
 
 `config.S3_BUCKET!` is safe here and only here: `loadEnv` rejects `STORAGE_DRIVER=s3` without a bucket, so this branch is unreachable with an undefined bucket.
 
-- [ ] **Step 7: Run tests and confirm they pass**
+- [x] **Step 7: Run tests and confirm they pass**
 
 Run: `docker compose up -d minio && pnpm vitest run tests/integration/storage.test.ts`
 Expected: 12 passed (6 conformance tests × 2 drivers).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -1049,7 +1049,7 @@ git commit -m "feat: add local and s3 state storage adapters with shared conform
 - Consumes: `db()`, `env()`
 - Produces: `auth` — a Better Auth instance with `emailAndPassword` and the `apiKey` plugin. Server calls used downstream: `auth.api.createApiKey`, `auth.api.verifyApiKey`, `auth.api.listApiKeys`, `auth.api.deleteApiKey`, `auth.api.getSession`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/integration/auth.test.ts
@@ -1111,12 +1111,12 @@ describe('api keys', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/integration/auth.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // server/utils/auth.ts
@@ -1151,14 +1151,14 @@ import { auth } from '../../utils/auth'
 export default defineEventHandler((event) => auth.handler(toWebRequest(event)))
 ```
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/integration/auth.test.ts`
 Expected: 5 passed.
 
 If `enableMetadata` or the permissions option name differs in 1.7.2, consult the live docs at https://better-auth.com/docs/plugins/api-key and adjust — the tests define the required behaviour, not the option spelling.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1177,7 +1177,7 @@ git commit -m "feat: configure better auth with the api key plugin"
 - Consumes: nothing
 - Produces: `lockInfoSchema` / `LockInfo`, `tokenConfigSchema` / `TokenConfig`, `projectRefSchema` / `ProjectRef`, `stateActionSchema` / `StateAction`. **Both lanes import from here.** Lane B's token form and Lane A's guard use the same `tokenConfigSchema`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/unit/schemas.test.ts
@@ -1257,12 +1257,12 @@ describe('projectRefSchema', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/unit/schemas.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // shared/schemas/lock.ts
@@ -1333,12 +1333,12 @@ export type { ProjectRef } from './schemas/project'
 export type { TokenConfig, TokenScope, StateAction } from './schemas/token'
 ```
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/unit/schemas.test.ts`
 Expected: 11 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1358,7 +1358,7 @@ git commit -m "feat: add zod schemas shared between the protocol and dashboard"
 - Consumes: nothing
 - Produces: the semantic color mapping every Lane B component relies on.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/unit/boot.test.ts
@@ -1375,12 +1375,12 @@ describe('design tokens', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/unit/boot.test.ts`
 Expected: FAIL — `app.config` not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // app.config.ts
@@ -1446,12 +1446,12 @@ export default defineNuxtConfig({
 
 Do not add `@nuxt/icon`, `@nuxt/fonts`, or `@nuxtjs/color-mode` to `modules` — Nuxt UI registers all three, and listing them again breaks the build.
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/unit/boot.test.ts && pnpm nuxt build`
 Expected: 1 passed; build succeeds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1481,7 +1481,7 @@ task adds Tier 2 (connectivity) and the health endpoint.
   async function assertHealthy(): Promise<void>   // throws on a long-running server; no-op on serverless
   ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/integration/health.test.ts
@@ -1525,12 +1525,12 @@ turns out to complicate the production signature, drop this fourth test and inst
 prove the same property with a direct unit test of the error-redaction helper. Say
 which you chose.
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/integration/health.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the checks**
+- [x] **Step 3: Implement the checks**
 
 ```ts
 // server/utils/health.ts
@@ -1620,7 +1620,7 @@ export async function assertHealthy(): Promise<void> {
 `{ rows }`, the other an array. The `migrations` check handles both. Verify against
 both drivers rather than trusting the shape above.
 
-- [ ] **Step 4: Wire it into startup**
+- [x] **Step 4: Wire it into startup**
 
 ```ts
 // server/plugins/00.env.ts
@@ -1637,7 +1637,7 @@ export default defineNitroPlugin(async () => {
 
 Keep the existing `assertEnvironment` export and its tests exactly as they are.
 
-- [ ] **Step 5: Add the endpoint**
+- [x] **Step 5: Add the endpoint**
 
 ```ts
 // server/api/health.get.ts
@@ -1653,7 +1653,7 @@ export default defineEventHandler(async (event) => {
 Unauthenticated by design — a load balancer cannot hold a session. It returns check
 names and pass/fail only.
 
-- [ ] **Step 6: Run tests and confirm they pass**
+- [x] **Step 6: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/integration/health.test.ts`
 Then prove the startup path really fails, against the built server rather than a unit
@@ -1666,7 +1666,7 @@ node .output/server/index.mjs; echo "EXIT=$?"    # expect non-zero, naming 'data
 docker compose start postgres
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/utils/health.ts server/api/health.get.ts server/plugins/00.env.ts tests/integration/health.test.ts
@@ -1718,7 +1718,7 @@ git tag phase-0-complete
 
 This is the security-critical guard named in the spec (§4). Every `/api/tf/*` handler calls it. It is never re-implemented per route.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/tf-auth.test.ts
@@ -1780,12 +1780,12 @@ describe('scopeAllows', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `pnpm vitest run tests/protocol/tf-auth.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // server/utils/tf-auth.ts
@@ -1861,12 +1861,12 @@ export async function authorizeTf(
 }
 ```
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/tf-auth.test.ts`
 Expected: 11 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/utils/tf-auth.ts tests/protocol/tf-auth.test.ts
@@ -1895,7 +1895,7 @@ git commit -m "feat: add terraform request authorization guard"
   ```
   `releaseLock` returns `false` when the supplied `lockId` does not match the held lock.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/lock.test.ts
@@ -1956,7 +1956,7 @@ describe('locking', () => {
 })
 ```
 
-- [ ] **Step 2: Write the test helpers**
+- [x] **Step 2: Write the test helpers**
 
 ```ts
 // tests/protocol/helpers.ts
@@ -1986,12 +1986,12 @@ export async function seedProject(orgSlug: string, projectSlug: string): Promise
 }
 ```
 
-- [ ] **Step 3: Run and confirm it fails**
+- [x] **Step 3: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/protocol/lock.test.ts`
 Expected: FAIL — `server/services/lock` not found.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // server/services/lock.ts
@@ -2049,12 +2049,12 @@ export async function currentLock(projectId: string): Promise<LockInfo | null> {
 }
 ```
 
-- [ ] **Step 5: Run tests and confirm they pass**
+- [x] **Step 5: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/lock.test.ts`
 Expected: 7 passed. The concurrency test is the important one — if it reports more than one winner, stop and fix before continuing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/services/lock.ts tests/protocol/
@@ -2084,7 +2084,7 @@ git commit -m "feat: add postgres-backed state locking"
   async function recordAudit(entry: AuditEntry): Promise<void>
   ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/state.test.ts
@@ -2158,12 +2158,12 @@ describe('state service', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/protocol/state.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement audit**
+- [x] **Step 3: Implement audit**
 
 ```ts
 // server/services/audit.ts
@@ -2193,7 +2193,7 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: Implement the state service**
+- [x] **Step 4: Implement the state service**
 
 ```ts
 // server/services/state.ts
@@ -2302,12 +2302,12 @@ export async function listVersions(projectId: string, limit = 100): Promise<Stat
 }
 ```
 
-- [ ] **Step 5: Run tests and confirm they pass**
+- [x] **Step 5: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/state.test.ts`
 Expected: 8 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/services/ tests/protocol/state.test.ts
@@ -2327,7 +2327,7 @@ git commit -m "feat: add versioned encrypted state service with audit trail"
 - Consumes: everything from A1–A3
 - Produces: the live HTTP surface described in the spec's routing table.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/endpoints.test.ts
@@ -2428,7 +2428,7 @@ describe('terraform protocol', () => {
 })
 ```
 
-- [ ] **Step 2: Install the test harness and run**
+- [x] **Step 2: Install the test harness and run**
 
 ```bash
 pnpm add -D @nuxt/test-utils playwright-core
@@ -2436,7 +2436,7 @@ pnpm vitest run tests/protocol/endpoints.test.ts
 ```
 Expected: FAIL — routes do not exist.
 
-- [ ] **Step 3: Implement the shared handler helper**
+- [x] **Step 3: Implement the shared handler helper**
 
 ```ts
 // server/utils/tf-handler.ts
@@ -2471,7 +2471,7 @@ export async function resolveProject(ref: ProjectRef): Promise<ResolvedProject> 
 }
 ```
 
-- [ ] **Step 4: Implement the state endpoint**
+- [x] **Step 4: Implement the state endpoint**
 
 ```ts
 // server/api/tf/[org]/[project]/index.ts
@@ -2571,7 +2571,7 @@ async function handleLockOnBase(
 import type { H3Event } from 'h3'
 ```
 
-- [ ] **Step 5: Implement the lock endpoint**
+- [x] **Step 5: Implement the lock endpoint**
 
 ```ts
 // server/api/tf/[org]/[project]/lock.ts
@@ -2622,12 +2622,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-- [ ] **Step 6: Run tests and confirm they pass**
+- [x] **Step 6: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/endpoints.test.ts`
 Expected: 10 passed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/api/tf server/utils/tf-handler.ts tests/protocol/endpoints.test.ts
@@ -2646,7 +2646,7 @@ git commit -m "feat: implement the terraform http backend protocol endpoints"
 - Consumes: `db()`, `store()`, `env()`
 - Produces: `async function runRetention(projectId: string): Promise<{ prunedVersions: number; sweptBlobs: number }>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/retention.test.ts
@@ -2690,12 +2690,12 @@ describe('retention', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/protocol/retention.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // server/services/retention.ts
@@ -2790,12 +2790,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-- [ ] **Step 4: Run tests and confirm they pass**
+- [x] **Step 4: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/retention.test.ts`
 Expected: 3 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/services/retention.ts server/api/admin tests/protocol/retention.test.ts
@@ -2822,7 +2822,7 @@ append-only record of what actually happened.
 endpoint. The button is additive and can be written before this endpoint exists; it
 only needs to work after both lanes merge.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/protocol/rollback.test.ts
@@ -2877,12 +2877,12 @@ describe('rollback', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/protocol/rollback.test.ts`
 Expected: FAIL — `rollbackTo` is not exported.
 
-- [ ] **Step 3: Add `rollbackTo` to the state service**
+- [x] **Step 3: Add `rollbackTo` to the state service**
 
 Append to `server/services/state.ts`:
 
@@ -2916,7 +2916,7 @@ export async function rollbackTo(args: {
 }
 ```
 
-- [ ] **Step 4: Add the endpoint**
+- [x] **Step 4: Add the endpoint**
 
 ```ts
 // server/api/admin/rollback.post.ts
@@ -2968,12 +2968,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-- [ ] **Step 5: Run tests and confirm they pass**
+- [x] **Step 5: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/protocol/rollback.test.ts`
 Expected: 4 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/services/state.ts server/api/admin/rollback.post.ts tests/protocol/rollback.test.ts
@@ -3017,7 +3017,7 @@ Lane B queries Drizzle directly for its read views rather than importing Lane A'
   ```
   Endpoints: `GET /api/ui/projects`, `GET /api/ui/projects/:id/versions`, `GET /api/ui/versions/:id`, `DELETE /api/ui/projects/:id/lock`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/ui/api.test.ts
@@ -3043,12 +3043,12 @@ describe('dashboard api', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/ui/api.test.ts`
 Expected: FAIL — routes return 404, not 401.
 
-- [ ] **Step 3: Implement the session guard**
+- [x] **Step 3: Implement the session guard**
 
 ```ts
 // server/utils/ui-auth.ts
@@ -3062,7 +3062,7 @@ export async function requireSession(event: H3Event): Promise<{ userId: string }
 }
 ```
 
-- [ ] **Step 4: Implement the endpoints**
+- [x] **Step 4: Implement the endpoints**
 
 ```ts
 // server/api/ui/projects.get.ts
@@ -3195,12 +3195,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-- [ ] **Step 5: Run tests and confirm they pass**
+- [x] **Step 5: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/ui/api.test.ts`
 Expected: 3 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/api/ui server/utils/ui-auth.ts tests/ui/api.test.ts
@@ -3220,7 +3220,7 @@ git commit -m "feat: add session-guarded dashboard read api"
 - Consumes: `auth`, `requireSession`, `tokenConfigSchema` (0.6)
 - Produces: `POST /api/ui/tokens` accepting a `TokenConfig` and returning `{ id, key }` — `key` is the raw value and is returned exactly once.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/ui/tokens.test.ts
@@ -3269,12 +3269,12 @@ describe('token config mapping', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/ui/tokens.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the mapping**
+- [x] **Step 3: Implement the mapping**
 
 ```ts
 // server/utils/token-mapping.ts
@@ -3309,7 +3309,7 @@ export function toApiKeyBody(config: TokenConfig, userId: string): ApiKeyBody {
 }
 ```
 
-- [ ] **Step 4: Implement the endpoints**
+- [x] **Step 4: Implement the endpoints**
 
 ```ts
 // server/api/ui/tokens.post.ts
@@ -3359,12 +3359,12 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-- [ ] **Step 5: Run tests and confirm they pass**
+- [x] **Step 5: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/ui/tokens.test.ts`
 Expected: 5 passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/api/ui/tokens* server/utils/token-mapping.ts tests/ui/tokens.test.ts
@@ -3383,7 +3383,7 @@ git commit -m "feat: add token management api"
 - Consumes: Better Auth client
 - Produces: the `dashboard` layout every subsequent page uses.
 
-- [ ] **Step 1: Create the auth client**
+- [x] **Step 1: Create the auth client**
 
 ```ts
 // app/composables/useAuth.ts
@@ -3402,7 +3402,7 @@ export function useAuth() {
 }
 ```
 
-- [ ] **Step 2: Build the layout**
+- [x] **Step 2: Build the layout**
 
 ```vue
 <!-- app/layouts/dashboard.vue -->
@@ -3460,7 +3460,7 @@ const links = [
 
 Accessibility notes baked in above, each mapping to an Appendix A rule: a skip link before the header; `aria-hidden` on the decorative logo icon; an `aria-label` on the icon-only account button; `translate="no"` on the product name; Title Case on the action label.
 
-- [ ] **Step 3: Add the route guard**
+- [x] **Step 3: Add the route guard**
 
 ```ts
 // app/middleware/auth.global.ts
@@ -3471,7 +3471,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 })
 ```
 
-- [ ] **Step 4: Build the login page**
+- [x] **Step 4: Build the login page**
 
 ```vue
 <!-- app/pages/login.vue -->
@@ -3550,11 +3550,11 @@ async function onSubmit(event: { data: Schema }) {
 </template>
 ```
 
-- [ ] **Step 5: Audit against the Web Interface Guidelines**
+- [x] **Step 5: Audit against the Web Interface Guidelines**
 
 Run the audit described in Appendix A over `app/layouts/dashboard.vue`, `app/pages/login.vue`. Fix every finding before proceeding. Expected clean result: no findings.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/
@@ -3569,7 +3569,7 @@ git commit -m "feat: add dashboard shell and sign-in page"
 - Create: `app/pages/index.vue`, `app/components/EmptyState.vue`
 - Test: audit in Step 4
 
-- [ ] **Step 1: Build the empty state**
+- [x] **Step 1: Build the empty state**
 
 ```vue
 <!-- app/components/EmptyState.vue -->
@@ -3587,7 +3587,7 @@ defineProps<{ icon: string; title: string; description: string }>()
 </template>
 ```
 
-- [ ] **Step 2: Build the page**
+- [x] **Step 2: Build the page**
 
 ```vue
 <!-- app/pages/index.vue -->
@@ -3676,18 +3676,18 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
 
 `ClientOnly` around the formatted timestamp is not decoration — `Intl.DateTimeFormat` resolves against the runtime's locale and time zone, which differ between the server and the browser and would otherwise produce a hydration mismatch.
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 ```bash
 pnpm dev
 ```
 Open http://localhost:3000. Confirm: the empty state shows with no projects; a seeded project renders; keyboard Tab reaches every card and shows a visible focus ring.
 
-- [ ] **Step 4: Audit against the Web Interface Guidelines**
+- [x] **Step 4: Audit against the Web Interface Guidelines**
 
 Audit `app/pages/index.vue`, `app/components/EmptyState.vue`. Fix every finding.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/
@@ -3707,7 +3707,7 @@ treats a `[project].vue` sitting next to a `[project]/` directory as a nested-ro
 parent and will not render `diff.vue` (Task B6) without a `<NuxtPage />` in it.
 Directory-plus-`index.vue` keeps both routes flat and independent.
 
-- [ ] **Step 1: Build the lock banner**
+- [x] **Step 1: Build the lock banner**
 
 ```vue
 <!-- app/components/LockBanner.vue -->
@@ -3767,7 +3767,7 @@ async function forceUnlock() {
 </template>
 ```
 
-- [ ] **Step 2: Build the timeline page**
+- [x] **Step 2: Build the timeline page**
 
 ```vue
 <!-- app/pages/projects/[org]/[project]/index.vue -->
@@ -3891,11 +3891,11 @@ const bytes = new Intl.NumberFormat(undefined, {
 </template>
 ```
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 Confirm the lock banner appears when a lock row exists, that Force Unlock asks for confirmation before acting, and that selecting two versions puts `?a=…&b=…` in the URL so the comparison can be shared.
 
-- [ ] **Step 4: Add the rollback action**
+- [x] **Step 4: Add the rollback action**
 
 Each non-current row gets a rollback button. It calls `POST /api/admin/rollback`
 (built by Lane A, Task A6) and, because rollback overwrites what Terraform will
@@ -3961,11 +3961,11 @@ async function rollback() {
 }
 ```
 
-- [ ] **Step 5: Audit against the Web Interface Guidelines**
+- [x] **Step 5: Audit against the Web Interface Guidelines**
 
 Audit `app/pages/projects/[org]/[project]/index.vue`, `app/components/LockBanner.vue`. Fix every finding.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/
@@ -3983,7 +3983,7 @@ git commit -m "feat: add version timeline with force unlock and rollback"
 **Interfaces:**
 - Produces: `function diffJson(a: unknown, b: unknown): DiffLine[]` where `DiffLine = { kind: 'add' | 'remove' | 'same'; path: string; value: string }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/ui/diff.test.ts
@@ -4026,12 +4026,12 @@ describe('diffJson', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 Run: `pnpm vitest run tests/ui/diff.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // app/utils/diff.ts
@@ -4075,7 +4075,7 @@ export function diffJson(a: unknown, b: unknown): DiffLine[] {
 }
 ```
 
-- [ ] **Step 4: Build the diff component**
+- [x] **Step 4: Build the diff component**
 
 ```vue
 <!-- app/components/StateDiff.vue -->
@@ -4140,7 +4140,7 @@ const changeCount = computed(() => props.lines.filter((l) => l.kind !== 'same').
 </template>
 ```
 
-- [ ] **Step 5: Build the diff page**
+- [x] **Step 5: Build the diff page**
 
 ```vue
 <!-- app/pages/projects/[org]/[project]/diff.vue -->
@@ -4190,16 +4190,16 @@ const loading = computed(() => leftStatus.value === 'pending' || rightStatus.val
 </template>
 ```
 
-- [ ] **Step 6: Run tests and confirm they pass**
+- [x] **Step 6: Run tests and confirm they pass**
 
 Run: `pnpm vitest run tests/ui/diff.test.ts`
 Expected: 6 passed.
 
-- [ ] **Step 7: Audit against the Web Interface Guidelines**
+- [x] **Step 7: Audit against the Web Interface Guidelines**
 
 Audit all three files. Fix every finding.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/ tests/ui/diff.test.ts
@@ -4214,7 +4214,7 @@ git commit -m "feat: add state version diff view"
 - Create: `app/pages/tokens.vue`, `app/components/TokenConfigurator.vue`, `app/components/TokenRevealModal.vue`
 - Test: audit in Step 4
 
-- [ ] **Step 1: Build the configurator**
+- [x] **Step 1: Build the configurator**
 
 ```vue
 <!-- app/components/TokenConfigurator.vue -->
@@ -4347,7 +4347,7 @@ async function onSubmit(event: { data: TokenConfig }) {
 </template>
 ```
 
-- [ ] **Step 2: Build the reveal modal**
+- [x] **Step 2: Build the reveal modal**
 
 ```vue
 <!-- app/components/TokenRevealModal.vue -->
@@ -4420,7 +4420,7 @@ const backendSnippet = computed(() => `terraform {
 </template>
 ```
 
-- [ ] **Step 3: Build the page**
+- [x] **Step 3: Build the page**
 
 ```vue
 <!-- app/pages/tokens.vue -->
@@ -4501,11 +4501,11 @@ async function revoke(id: string) {
 </template>
 ```
 
-- [ ] **Step 4: Audit against the Web Interface Guidelines**
+- [x] **Step 4: Audit against the Web Interface Guidelines**
 
 Audit all three files. Fix every finding. Pay particular attention to: the copy-to-clipboard confirmation being announced via `aria-live`; the revoke button carrying a per-row `aria-label`; and the reveal modal being non-dismissible so the token cannot be lost by a stray click.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/
@@ -4538,7 +4538,7 @@ Plus: a clean Web Interface Guidelines audit across all of `app/**`.
 - Create: `docker-compose.yml`, `.env.example`, `scripts/seed.ts`
 - Modify: `package.json` scripts
 
-- [ ] **Step 1: Complete the compose file**
+- [x] **Step 1: Complete the compose file**
 
 Task 0.3 created a minimal version of this file. Replace it with the full stack:
 
@@ -4578,7 +4578,7 @@ volumes:
   miniodata:
 ```
 
-- [ ] **Step 2: Write `.env.example`**
+- [x] **Step 2: Write `.env.example`**
 
 ```bash
 # .env.example
@@ -4608,7 +4608,7 @@ RETENTION_KEEP_VERSIONS=100
 RETENTION_KEEP_DAYS=30
 ```
 
-- [ ] **Step 3: Write the seed script**
+- [x] **Step 3: Write the seed script**
 
 ```ts
 // scripts/seed.ts
@@ -4627,7 +4627,7 @@ await db().insert(organization).values({ id: ulid(), name: slug, slug })
 console.log(`Seeded organization: ${slug}`)
 ```
 
-- [ ] **Step 4: Add scripts**
+- [x] **Step 4: Add scripts**
 
 ```json
 "scripts": {
@@ -4644,7 +4644,7 @@ console.log(`Seeded organization: ${slug}`)
 }
 ```
 
-- [ ] **Step 5: Verify end to end**
+- [x] **Step 5: Verify end to end**
 
 ```bash
 cp .env.example .env
@@ -4654,7 +4654,7 @@ pnpm dev
 ```
 Expected: the app boots, sign-up works, the project list renders its empty state.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -4671,7 +4671,7 @@ This is the test that settles whether the protocol implementation is correct. Ev
 - Create: `tests/e2e/terraform.test.ts`, `tests/e2e/fixture/main.tf`
 - Test: itself
 
-- [ ] **Step 1: Write the Terraform fixture**
+- [x] **Step 1: Write the Terraform fixture**
 
 ```hcl
 # tests/e2e/fixture/main.tf
@@ -4694,7 +4694,7 @@ output "value" {
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 // tests/e2e/terraform.test.ts
@@ -4800,7 +4800,7 @@ describe('real terraform', () => {
 })
 ```
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 ```bash
 terraform version   # install if missing: brew install terraform
@@ -4810,7 +4810,7 @@ Expected: 6 passed.
 
 The lock test is the one that matters most. If Terraform prints the holder's name, the 423 response body is correctly shaped. If it prints a generic error, the body is wrong even though every unit test passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/e2e
@@ -4824,7 +4824,7 @@ git commit -m "test: verify the protocol against the real terraform cli"
 **Files:**
 - Create: `Dockerfile`, `docker-compose.prod.yml`, `vercel.json`, `.dockerignore`
 
-- [ ] **Step 1: Write the Dockerfile**
+- [x] **Step 1: Write the Dockerfile**
 
 ```dockerfile
 # Dockerfile
@@ -4848,7 +4848,7 @@ EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]
 ```
 
-- [ ] **Step 2: Write the production compose file**
+- [x] **Step 2: Write the production compose file**
 
 ```yaml
 # docker-compose.prod.yml
@@ -4910,7 +4910,7 @@ volumes:
 
 The `:?` syntax fails the deployment at startup when a required secret is missing, rather than starting an app that cannot work.
 
-- [ ] **Step 3: Write the Vercel config**
+- [x] **Step 3: Write the Vercel config**
 
 ```json
 {
@@ -4919,7 +4919,7 @@ The `:?` syntax fails the deployment at startup when a required secret is missin
 }
 ```
 
-- [ ] **Step 4: Verify both paths**
+- [x] **Step 4: Verify both paths**
 
 ```bash
 docker compose -f docker-compose.prod.yml config    # no errors
@@ -4928,7 +4928,7 @@ curl -sf -o /dev/null -w '%{http_code}\n' http://localhost:3000   # 200 or 302
 docker compose -f docker-compose.prod.yml down
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Dockerfile docker-compose.prod.yml vercel.json .dockerignore
@@ -4942,15 +4942,15 @@ git commit -m "chore: add docker and vercel deployment configuration"
 **Files:**
 - Create: `README.md`, `docs/deploy-docker.md`, `docs/deploy-vercel.md`, `docs/backend-config.md`
 
-- [ ] **Step 1: Write the README**
+- [x] **Step 1: Write the README**
 
 Must contain, in this order: what statesman is in two sentences; the three-command quickstart; a copy-pasteable `backend "http"` block; the `lock_method = "POST"` note and why; a prominent warning that losing `STATESMAN_ENCRYPTION_KEY` means losing all state, and that the key must be backed up separately from the database; and a comparison table against the `s3` backend that is honest about when S3 is the better choice.
 
-- [ ] **Step 2: Write the deployment guides**
+- [x] **Step 2: Write the deployment guides**
 
 `docs/deploy-docker.md` and `docs/deploy-vercel.md`, each with the full environment variable table and a verification step that ends in a real `terraform init`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md docs/
