@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { stateActionSchema, tokenScopeSchema } from '../../../shared/schemas/token'
 import { auth } from '../../utils/auth'
-import { requireSession } from '../../utils/ui-auth'
+import { requireAdmin } from '../../utils/ui-auth'
 
 // The plugin types `metadata` as an open record and `permissions` as
 // string arrays, so both are re-parsed here rather than handed to the client
@@ -11,7 +11,7 @@ const metadataSchema = z.object({ scope: tokenScopeSchema })
 const actionsSchema = z.array(stateActionSchema)
 
 export default defineEventHandler(async (event) => {
-  await requireSession(event)
+  await requireAdmin(event)
   const { apiKeys } = await auth.api.listApiKeys({ headers: event.headers })
 
   return apiKeys.map((key) => ({

@@ -1,17 +1,27 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 
-const { user, signOut } = useAuth()
+const { user, isAdmin, signOut } = useAuth()
 
 // Every authenticated route renders through this layout, and /login sets the
 // same attribute for itself. Without it assistive technology has to guess the
 // document language.
 useHead({ htmlAttrs: { lang: 'en' } })
 
-const links: NavigationMenuItem[] = [
+/**
+ * Tokens and Users are admin-only routes, so a member is not offered them.
+ * This is presentation, not protection: both pages refuse a member server-side
+ * and say so, and hiding the link only saves someone a pointless click.
+ */
+const links = computed<NavigationMenuItem[]>(() => [
   { label: 'Projects', icon: 'i-lucide-boxes', to: '/' },
-  { label: 'Tokens', icon: 'i-lucide-key-round', to: '/tokens' }
-]
+  ...(isAdmin.value
+    ? [
+        { label: 'Tokens', icon: 'i-lucide-key-round', to: '/tokens' },
+        { label: 'Users', icon: 'i-lucide-users', to: '/users' }
+      ]
+    : [])
+])
 
 const toast = useToast()
 
@@ -30,6 +40,7 @@ async function onSignOut() {
 }
 
 const accountItems: DropdownMenuItem[][] = [
+  [{ label: 'Account', icon: 'i-lucide-user-cog', to: '/account' }],
   [
     {
       label: 'Sign Out',

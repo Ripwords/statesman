@@ -1,9 +1,36 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { apiKey } from '@better-auth/api-key'
+import { admin } from 'better-auth/plugins'
+import { createAccessControl } from 'better-auth/plugins/access'
 import { db } from '../db/client'
 import { schema } from '../db/schema'
 import { env } from './env'
+
+/**
+ * What the two roles may do, in the admin plugin's own vocabulary.
+ *
+ * statesman does not consult these permissions directly — `requireAdmin` is the
+ * guard, and it asks one question. They exist so `member` is a role the plugin
+ * recognises rather than an unknown string, which is what keeps `setRole`
+ * type-safe and stops a future plugin version rejecting a role it never knew
+ * about.
+ *
+ * A member has no entry for `user` or `session` at all: reading projects and
+ * versions is not something the admin plugin models, and granting nothing here
+ * is the accurate statement.
+ */
+const ac = createAccessControl({
+  user: ['create', 'list', 'set-role', 'set-password', 'get', 'update', 'delete'],
+  session: ['list', 'revoke', 'delete']
+})
+
+const adminRole = ac.newRole({
+  user: ['create', 'list', 'set-role', 'set-password', 'get', 'update', 'delete'],
+  session: ['list', 'revoke', 'delete']
+})
+
+const memberRole = ac.newRole({})
 
 export const auth = betterAuth({
   secret: env().BETTER_AUTH_SECRET,
@@ -16,7 +43,37 @@ export const auth = betterAuth({
   // Accounts are created by the operator with `pnpm user:create`, which needs
   // database access and the auth secret.
   emailAndPassword: { enabled: true, disableSignUp: true },
+  user: {
+    additionalFields: {
+      /**
+       * Declared here as well as by the admin plugin, and only for the type.
+       *
+       * The plugin's own schema marks `role` as `input: false`, and the session
+       * type is built with InferDBFieldsFromPluginsInput, which drops every
+       * field carrying that flag. The column is written and returned correctly
+       * at runtime; it is `session.user.role` in TypeScript that does not exist
+       * without this. Re-declaring the field in additionalFields — where there
+       * is no `input: false` to filter on — puts it back.
+       *
+       * https://github.com/better-auth/better-auth/issues/5047
+       */
+      role: { type: 'string', required: false }
+    }
+  },
   plugins: [
+    admin({
+      // `member`, not the plugin's built-in `user`: see shared/schemas/user.ts.
+      // This is what stops the plugin writing a third role name into a column
+      // that userRoleSchema only accepts two values for.
+      defaultRole: 'member',
+      adminRoles: ['admin'],
+      // Declared, not merely named. `roles` is what makes `member` a role the
+      // plugin knows: without it, `setRole` still accepts the string at runtime
+      // but its type is the built-in `'user' | 'admin'`, so every call is a
+      // type error and the only ways out are a cast or trusting undocumented
+      // runtime behaviour. Neither is a foundation for an authorization check.
+      roles: { admin: adminRole, member: memberRole }
+    }),
     apiKey({
       defaultPrefix: 'sm_',
       // Project scope rides in metadata; the plugin has no resource-instance

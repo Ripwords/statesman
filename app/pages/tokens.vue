@@ -2,7 +2,15 @@
 definePageMeta({ layout: 'dashboard' })
 useHead({ title: 'Tokens · statesman' })
 
-const { data: tokens, error, refresh } = await useFetch('/api/ui/tokens')
+const { isAdmin } = useAuth()
+
+// Skipped for a member: the request would answer 403 and paint "Could Not Load
+// Tokens" over the page, which blames the server for a permission decision.
+const {
+  data: tokens,
+  error,
+  refresh
+} = await useFetch('/api/ui/tokens', { immediate: isAdmin.value })
 type TokenRow = NonNullable<typeof tokens.value>[number]
 
 const revealed = ref<{ id: string; key: string; name: string } | null>(null)
@@ -52,126 +60,128 @@ function onCreated(token: { id: string; key: string; name: string }) {
   <div class="space-y-6">
     <div class="flex items-center justify-between gap-4">
       <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Tokens</h1>
-      <UButton icon="i-lucide-plus" label="New Token" @click="creating = true" />
+      <UButton v-if="isAdmin" icon="i-lucide-plus" label="New Token" @click="creating = true" />
     </div>
 
-    <div aria-live="polite">
-      <UAlert
-        v-if="notice"
-        color="success"
-        variant="subtle"
-        icon="i-lucide-check"
-        :description="notice"
-        :close="true"
-        @update:open="notice = null"
-      />
-    </div>
+    <AdminOnly what="Managing tokens">
+      <div aria-live="polite">
+        <UAlert
+          v-if="notice"
+          color="success"
+          variant="subtle"
+          icon="i-lucide-check"
+          :description="notice"
+          :close="true"
+          @update:open="notice = null"
+        />
+      </div>
 
-    <div v-if="error" aria-live="polite">
-      <UAlert
-        color="error"
-        variant="subtle"
-        icon="i-lucide-triangle-alert"
-        title="Could Not Load Tokens"
-        description="The server did not answer. This is a problem reaching statesman, not a sign that you have no tokens."
+      <div v-if="error" aria-live="polite">
+        <UAlert
+          color="error"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Could Not Load Tokens"
+          description="The server did not answer. This is a problem reaching statesman, not a sign that you have no tokens."
+        >
+          <template #actions>
+            <UButton color="error" variant="outline" label="Retry" @click="refresh()" />
+          </template>
+        </UAlert>
+      </div>
+
+      <EmptyState
+        v-else-if="!tokens?.length"
+        icon="i-lucide-key-round"
+        title="No Tokens Yet"
+        description="Terraform authenticates with a token. Create one, then paste it into the password field of your backend block."
       >
-        <template #actions>
-          <UButton color="error" variant="outline" label="Retry" @click="refresh()" />
-        </template>
-      </UAlert>
-    </div>
+        <UButton icon="i-lucide-plus" label="Create Your First Token" @click="creating = true" />
+      </EmptyState>
 
-    <EmptyState
-      v-else-if="!tokens?.length"
-      icon="i-lucide-key-round"
-      title="No Tokens Yet"
-      description="Terraform authenticates with a token. Create one, then paste it into the password field of your backend block."
-    >
-      <UButton icon="i-lucide-plus" label="Create Your First Token" @click="creating = true" />
-    </EmptyState>
-
-    <ul v-else class="grid gap-2">
-      <li
-        v-for="t in tokens"
-        :key="t.id"
-        class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
-      >
-        <span class="min-w-0 truncate font-medium">{{ t.name ?? 'Unnamed' }}</span>
-        <code class="text-xs text-muted" translate="no">{{ t.start }}…</code>
-        <!--
+      <ul v-else class="grid gap-2">
+        <li
+          v-for="t in tokens"
+          :key="t.id"
+          class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
+        >
+          <span class="min-w-0 truncate font-medium">{{ t.name ?? 'Unnamed' }}</span>
+          <code class="text-xs text-muted" translate="no">{{ t.start }}…</code>
+          <!--
           The badge that was here read Active/Disabled from `apikey.enabled`, but
           nothing in the product ever sets it to false: there is no toggle, only
           revocation. Every token rendered "Active" forever and "Disabled" was
           unreachable, so it stated a capability that does not exist. Revoking is
           the kill switch, it is immediate, and it is the button on the right.
         -->
-        <span class="text-sm text-muted">{{ scopeLabel(t) }}</span>
-        <span class="text-sm text-muted tabular">
-          {{ t.rateLimitMax ?? 120 }}/{{ Math.round((t.rateLimitTimeWindow ?? 60_000) / 1000) }}s
-        </span>
-        <span v-if="t.expiresAt" class="text-sm text-muted tabular">
-          <ClientOnly fallback="—">Expires {{ when.format(new Date(t.expiresAt)) }}</ClientOnly>
-        </span>
-        <UButton
-          class="ms-auto"
-          color="error"
-          variant="ghost"
-          icon="i-lucide-trash-2"
-          :aria-label="`Revoke token ${t.name ?? 'Unnamed'}`"
-          @click="pendingRevoke = t"
-        />
-      </li>
-    </ul>
+          <span class="text-sm text-muted">{{ scopeLabel(t) }}</span>
+          <span class="text-sm text-muted tabular">
+            {{ t.rateLimitMax ?? 120 }}/{{ Math.round((t.rateLimitTimeWindow ?? 60_000) / 1000) }}s
+          </span>
+          <span v-if="t.expiresAt" class="text-sm text-muted tabular">
+            <ClientOnly fallback="—">Expires {{ when.format(new Date(t.expiresAt)) }}</ClientOnly>
+          </span>
+          <UButton
+            class="ms-auto"
+            color="error"
+            variant="ghost"
+            icon="i-lucide-trash-2"
+            :aria-label="`Revoke token ${t.name ?? 'Unnamed'}`"
+            @click="pendingRevoke = t"
+          />
+        </li>
+      </ul>
 
-    <!-- The slideover's own body is the scroll container, so the containment
+      <!-- The slideover's own body is the scroll container, so the containment
          belongs on that slot rather than on a child of it. -->
-    <USlideover v-model:open="creating" title="New Token" :ui="{ body: 'overscroll-contain' }">
-      <template #body>
-        <TokenConfigurator @created="onCreated" />
-      </template>
-    </USlideover>
+      <USlideover v-model:open="creating" title="New Token" :ui="{ body: 'overscroll-contain' }">
+        <template #body>
+          <TokenConfigurator @created="onCreated" />
+        </template>
+      </USlideover>
 
-    <UModal
-      :open="pendingRevoke !== null"
-      title="Revoke This Token?"
-      :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
-      @update:open="
-        (value) => {
-          if (!value) pendingRevoke = null
-        }
-      "
-    >
-      <template #body>
-        <div class="space-y-3">
-          <p class="text-sm text-muted text-pretty">
-            Revoking {{ pendingRevoke?.name ?? 'this token' }} takes effect immediately and cannot
-            be undone. Any Terraform run still configured with it will fail to authenticate on its
-            next plan or apply.
-          </p>
-          <div aria-live="polite">
-            <UAlert
-              v-if="revokeError"
+      <UModal
+        :open="pendingRevoke !== null"
+        title="Revoke This Token?"
+        :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
+        @update:open="
+          (value) => {
+            if (!value) pendingRevoke = null
+          }
+        "
+      >
+        <template #body>
+          <div class="space-y-3">
+            <p class="text-sm text-muted text-pretty">
+              Revoking {{ pendingRevoke?.name ?? 'this token' }} takes effect immediately and cannot
+              be undone. Any Terraform run still configured with it will fail to authenticate on its
+              next plan or apply.
+            </p>
+            <div aria-live="polite">
+              <UAlert
+                v-if="revokeError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-triangle-alert"
+                :description="revokeError"
+              />
+            </div>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex w-full justify-end gap-2">
+            <UButton color="neutral" variant="ghost" label="Cancel" @click="pendingRevoke = null" />
+            <UButton
               color="error"
-              variant="subtle"
-              icon="i-lucide-triangle-alert"
-              :description="revokeError"
+              :loading="revoking"
+              :label="revoking ? 'Revoking…' : 'Revoke Token'"
+              @click="revoke"
             />
           </div>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" label="Cancel" @click="pendingRevoke = null" />
-          <UButton
-            color="error"
-            :loading="revoking"
-            :label="revoking ? 'Revoking…' : 'Revoke Token'"
-            @click="revoke"
-          />
-        </div>
-      </template>
-    </UModal>
+        </template>
+      </UModal>
 
-    <TokenRevealModal :token="revealed" @close="revealed = null" />
+      <TokenRevealModal :token="revealed" @close="revealed = null" />
+    </AdminOnly>
   </div>
 </template>

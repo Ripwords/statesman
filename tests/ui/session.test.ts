@@ -25,6 +25,10 @@ const GET_SESSION_RESPONSE = {
     email: 'dev@statesman.test',
     emailVerified: false,
     image: null,
+    role: 'admin',
+    banned: false,
+    banReason: null,
+    banExpires: null,
     createdAt: '2026-09-04T04:14:22.916Z',
     updatedAt: '2026-09-04T04:14:22.916Z'
   }
@@ -41,15 +45,40 @@ describe('toSessionState', () => {
   })
 
   it('keeps exactly the fields the dashboard renders and nothing else', () => {
+    // `role` is in and the ban columns are out. The role decides which nav
+    // links render, so the client genuinely needs it; nothing renders a ban,
+    // and a field nobody displays is a field that cannot leak.
     expect(toSessionState(GET_SESSION_RESPONSE)).toEqual({
       status: 'authenticated',
       user: {
         id: 'u1',
         name: 'Dev User',
         email: 'dev@statesman.test',
-        image: null
+        image: null,
+        role: 'admin'
       }
     })
+  })
+
+  it('carries the role through, because the nav is built from it', () => {
+    const state = toSessionState(GET_SESSION_RESPONSE)
+    expect(state.status === 'authenticated' && state.user.role).toBe('admin')
+  })
+
+  /**
+   * A session whose role column is NULL still has to resolve to a user, not to
+   * "anonymous" — otherwise a row written before the column existed logs its
+   * owner out. `roleOf` is what turns the null into `member` downstream.
+   */
+  it('accepts a user with no role at all', () => {
+    const withoutRole = {
+      ...GET_SESSION_RESPONSE,
+      user: { ...GET_SESSION_RESPONSE.user, role: null }
+    }
+    expect(toSessionState(withoutRole).status).toBe('authenticated')
+    const missing = { ...GET_SESSION_RESPONSE, user: { ...GET_SESSION_RESPONSE.user } }
+    delete (missing.user as { role?: unknown }).role
+    expect(toSessionState(missing).status).toBe('authenticated')
   })
 
   it('reads an empty body as anonymous rather than authenticated', () => {

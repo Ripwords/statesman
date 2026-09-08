@@ -33,7 +33,8 @@ const lockVerb = (method: string, id: string): Promise<Response> =>
 
 beforeAll(async () => {
   const email = `e2e${Date.now()}@example.com`
-  const user = await provisionUser(email, 'correct horse battery')
+  // Admin: this suite drives project creation, rollback and retention.
+  const user = await provisionUser(email, 'correct horse battery', 'admin')
   const key = await auth.api.createApiKey({
     body: {
       userId: user.id,
@@ -182,6 +183,19 @@ describe('terraform protocol', () => {
 })
 
 describe('admin endpoints', () => {
+  /**
+   * This server has no CRON_SECRET, which is the default and the Docker case.
+   * The scheduler's door must then not exist at all: 404, not a 401 advertising
+   * an endpoint no credential could ever open. tests/protocol/retention-cron
+   * covers the configured deployment.
+   */
+  it('has no cron retention route when CRON_SECRET is unset', async () => {
+    await expect($fetch('/api/admin/retention')).rejects.toMatchObject({ statusCode: 404 })
+    await expect(
+      $fetch('/api/admin/retention', { headers: { authorization: 'Bearer anything' } })
+    ).rejects.toMatchObject({ statusCode: 404 })
+  })
+
   it('rejects an unauthenticated retention run', async () => {
     await expect($fetch('/api/admin/retention', { method: 'POST' })).rejects.toMatchObject({
       statusCode: 401

@@ -8,6 +8,13 @@
       "when": 1788491345844,
       "tag": "0000_yielding_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788835364944,
+      "tag": "0001_parched_the_order",
+      "breakpoints": true
     }
   ]
 }

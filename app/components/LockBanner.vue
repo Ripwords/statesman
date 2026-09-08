@@ -6,6 +6,11 @@ const open = ref(false)
 const pending = ref(false)
 const failure = ref<string | null>(null)
 
+// Force-unlock is admin-only server-side. The banner itself still renders for a
+// member — knowing the state is locked, and by whom, is exactly what they came
+// to find out — but the button that would answer 403 is not offered.
+const { isAdmin } = useAuth()
+
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 async function forceUnlock() {
@@ -33,7 +38,13 @@ async function forceUnlock() {
         >. Terraform will refuse to apply until it is released.
       </template>
       <template #actions>
-        <UButton color="warning" variant="outline" label="Force Unlock" @click="open = true" />
+        <UButton
+          v-if="isAdmin"
+          color="warning"
+          variant="outline"
+          label="Force Unlock"
+          @click="open = true"
+        />
       </template>
     </UAlert>
 

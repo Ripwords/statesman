@@ -18,6 +18,17 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
+  // --- Better Auth admin plugin ---------------------------------------------
+  // `admin` or `member` (shared/schemas/user.ts). Nullable and untyped at the
+  // database level because that is how the plugin declares it; roleOf() is what
+  // turns the column back into one of the two roles, defaulting to the lesser.
+  role: text('role'),
+  // Ban and impersonation are not features here — nothing in the UI or the API
+  // sets them. The columns exist because the plugin READS them on every
+  // sign-in and session lookup, and a missing column is an error, not a null.
+  banned: boolean('banned').notNull().default(false),
+  banReason: text('ban_reason'),
+  banExpires: timestamp('ban_expires'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
@@ -31,6 +42,9 @@ export const session = pgTable('session', {
   expiresAt: timestamp('expires_at').notNull(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
+  // Same story as the ban columns: impersonation is not offered, but the
+  // plugin's session queries select this column.
+  impersonatedBy: text('impersonated_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })

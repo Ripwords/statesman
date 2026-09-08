@@ -4,14 +4,14 @@ import { db } from '../../db/client'
 import { project, organization } from '../../db/schema'
 import { RollbackError, rollbackTo } from '../../services/state'
 import { recordAuditBestEffort } from '../../services/audit'
-import { requireSession } from '../../utils/ui-auth'
+import { requireAdmin } from '../../utils/ui-auth'
 
 const bodySchema = z.object({ projectId: z.string().min(1), versionId: z.string().min(1) })
 
 export default defineEventHandler(async (event) => {
-  // requireSession, not a second inline copy of it: the two had already drifted
+  // requireAdmin, not a second inline copy of it: the two had already drifted
   // and the guard is the only thing between a stranger and every project.
-  const session = await requireSession(event)
+  const session = await requireAdmin(event)
 
   // 400 is the right status for a malformed body, so h3's rewrite of any
   // validator throw into "400 Validation Error" is exactly what we want here

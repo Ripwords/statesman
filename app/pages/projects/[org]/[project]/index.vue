@@ -84,6 +84,10 @@ const pendingRollback = ref<Version | null>(null)
 const rollingBack = ref(false)
 const rollbackError = ref<string | null>(null)
 
+// Rolling back is admin-only server-side, so a member is not offered the
+// control. The timeline itself, and every diff, stay readable.
+const { isAdmin } = useAuth()
+
 /**
  * Says what actually went wrong. Until Lane A's admin API merges every attempt
  * is a 404, and "check that the version still exists" would be a lie in the one
@@ -257,7 +261,7 @@ const bytes = new Intl.NumberFormat(undefined, {
               <ClientOnly fallback="—">{{ bytes.format(v.sizeBytes) }}</ClientOnly>
             </span>
             <UButton
-              v-if="v.id !== history.currentVersionId"
+              v-if="v.id !== history.currentVersionId && isAdmin"
               class="ms-auto"
               color="neutral"
               variant="ghost"

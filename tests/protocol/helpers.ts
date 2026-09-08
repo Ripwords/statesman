@@ -11,7 +11,9 @@ import {
   user
 } from '../../server/db/schema'
 import { store } from '../../server/storage'
+import { auth } from '../../server/utils/auth'
 import { provisioning, provisioningConfig } from '../../scripts/provision'
+import type { UserRole } from '../../shared/schemas/user'
 
 /**
  * Vitest runs test FILES in parallel against one database and one blob root,
@@ -112,12 +114,47 @@ export async function seedUser(id: string): Promise<string> {
  */
 export async function provisionUser(
   email: string,
-  password: string
+  password: string,
+  role?: UserRole
 ): Promise<{ id: string; email: string }> {
   const admin = provisioning(provisioningConfig())
   try {
-    return await admin.createUser({ email, password, name: 'Test' })
+    // Explicit rather than defaulted to admin. A suite that drives an
+    // admin-only route has to say so, or a guard regression would show up as
+    // every test still passing.
+    return await admin.createUser({ email, password, name: 'Test', role })
   } finally {
     await admin.close()
   }
+}
+
+/**
+ * Signs in and returns headers carrying the session cookie, so a test can drive
+ * a route handler as a real signed-in person rather than as a mocked session.
+ *
+ * `asResponse` is what makes the Set-Cookie header reachable — the plain call
+ * returns the session body and drops the cookie the guards actually read.
+ */
+export async function signInHeaders(email: string, password: string): Promise<Headers> {
+  const response = await auth.api.signInEmail({
+    body: { email, password },
+    asResponse: true
+  })
+  const cookie = response.headers.get('set-cookie')
+  if (cookie === null) {
+    throw new Error(`sign-in for ${email} returned no session cookie`)
+  }
+  // Set-Cookie carries attributes (Path, HttpOnly, SameSite…) that a Cookie
+  // request header must not repeat; only the name=value pair before the first
+  // semicolon belongs there. Multiple cookies arrive comma-separated.
+  const pairs = cookie
+    .split(/,(?=[^;]+?=)/)
+    .map((part) => part.split(';')[0]?.trim())
+    .filter((part): part is string => part !== undefined && part !== '')
+  return new Headers({ cookie: pairs.join('; ') })
+}
+
+/** Sets a provisioned account's role directly, the way the migration backfill does. */
+export async function setRole(userId: string, role: UserRole): Promise<void> {
+  await db().update(user).set({ role }).where(eq(user.id, userId))
 }

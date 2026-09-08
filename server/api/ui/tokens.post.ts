@@ -1,7 +1,7 @@
 import { tokenConfigSchema } from '../../../shared/schemas/token'
 import { auth } from '../../utils/auth'
 import { toApiKeyBody } from '../../utils/token-mapping'
-import { requireSession } from '../../utils/ui-auth'
+import { requireAdmin } from '../../utils/ui-auth'
 
 /**
  * Creates a token and returns its raw value exactly once (spec §4). Keys are
@@ -14,7 +14,7 @@ import { requireSession } from '../../utils/ui-auth'
  * server-side path.
  */
 export default defineEventHandler(async (event) => {
-  const session = await requireSession(event)
+  const session = await requireAdmin(event)
   // A malformed configuration is a 400, which is exactly what h3 raises from a
   // validator throw, so this needs no catch (CARRY-FORWARD §7c).
   const config = await readValidatedBody(event, tokenConfigSchema.parse)

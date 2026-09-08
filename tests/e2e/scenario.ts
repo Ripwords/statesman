@@ -136,7 +136,9 @@ export function terraformAcceptance(options: ScenarioOptions): void {
       // Created through the operator path, because the server refuses public
       // sign-up. This also proves an operator-provisioned account can sign in
       // against the running server, which is the whole point of the split.
-      const user = await provisionUser(email, password)
+      // Admin: the acceptance run creates its own project through the dashboard
+      // endpoint, which is admin-only.
+      const user = await provisionUser(email, password, 'admin')
 
       // A real browser session, taken over HTTP, because that is what guards
       // the create endpoint.

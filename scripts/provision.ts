@@ -1,8 +1,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { drizzle } from 'drizzle-orm/node-postgres'
+import { eq } from 'drizzle-orm'
 import { Pool } from 'pg'
-import { schema } from '../server/db/schema'
+import { schema, user } from '../server/db/schema'
+import type { UserRole } from '../shared/schemas/user'
 
 export type ProvisionedUser = { id: string; email: string }
 
@@ -11,7 +13,10 @@ export type Provisioning = {
     email: string
     password: string
     name?: string
+    role?: UserRole
   }) => Promise<ProvisionedUser>
+  /** Whether any admin account exists, which is what decides the first role. */
+  hasAdmin: () => Promise<boolean>
   close: () => Promise<void>
 }
 
@@ -51,7 +56,23 @@ export function provisioning(options: { databaseUrl: string; secret: string }): 
           name: input.name ?? input.email.split('@')[0] ?? input.email
         }
       })
+      // The role is written directly rather than passed to signUpEmail. The
+      // admin plugin declares `role` as `input: false`, so a sign-up body
+      // carrying one is ignored — and this operator-side instance does not load
+      // the plugin anyway, deliberately: it exists to write two rows, not to
+      // hold every capability the running server has.
+      if (input.role !== undefined) {
+        await db.update(user).set({ role: input.role }).where(eq(user.id, result.user.id))
+      }
       return { id: result.user.id, email: result.user.email }
+    },
+    async hasAdmin() {
+      const rows = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.role, 'admin'))
+        .limit(1)
+      return rows.length > 0
     },
     async close() {
       await pool.end()

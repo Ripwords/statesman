@@ -4,7 +4,7 @@ import { organization, project } from '../../db/schema'
 import { createProjectSchema } from '../../../shared/schemas/project'
 import { chooseOrganization } from '../../utils/organization'
 import { recordAuditBestEffort } from '../../services/audit'
-import { requireSession } from '../../utils/ui-auth'
+import { requireAdmin } from '../../utils/ui-auth'
 
 /**
  * Creates a project. This is the only way one comes into existence through the
@@ -16,7 +16,7 @@ import { requireSession } from '../../utils/ui-auth'
 export default defineEventHandler(async (event) => {
   // Before the body is read, so an anonymous caller gets 401 rather than a 400
   // about a slug it was never entitled to submit.
-  const session = await requireSession(event)
+  const session = await requireAdmin(event)
 
   // A malformed slug is a 400, which is exactly what h3 raises from a validator
   // throw, so this needs no wrapping (CARRY-FORWARD §7c).

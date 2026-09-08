@@ -1,15 +1,23 @@
 import { createAuthClient } from 'better-auth/vue'
 import { z } from 'zod'
+import { isAdmin as roleIsAdmin, roleOf } from '~~/shared/schemas/user'
 
 /**
  * Only the fields the dashboard renders. Everything else Better Auth returns is
  * dropped on purpose — see `toSessionState`.
+ *
+ * `role` is here because the nav is built from it: a member has no Tokens or
+ * Users link. It is not a secret and it is not the enforcement — every guard is
+ * server-side, and hiding a link only saves someone a 403. `nullish` because
+ * the column is nullable; `roleOf` resolves the null to the lesser role rather
+ * than this schema rejecting the whole session over it.
  */
 const sessionUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  image: z.string().nullish()
+  image: z.string().nullish(),
+  role: z.string().nullish()
 })
 export type SessionUser = z.infer<typeof sessionUserSchema>
 
@@ -110,6 +118,12 @@ export function useAuth() {
   const user = computed<SessionUser | null>(() =>
     state.value?.status === 'authenticated' ? state.value.user : null
   )
+  /**
+   * Drives which links render, and nothing else. The server refuses a member on
+   * every admin route regardless of what the browser believes about this value.
+   */
+  const isAdmin = computed(() => roleIsAdmin(user.value?.role))
+  const role = computed(() => roleOf(user.value?.role))
 
   async function signIn(credentials: { email: string; password: string }): Promise<SignInResult> {
     try {
@@ -140,5 +154,5 @@ export function useAuth() {
     return { ok: true }
   }
 
-  return { user, signIn, signOut }
+  return { user, role, isAdmin, signIn, signOut }
 }

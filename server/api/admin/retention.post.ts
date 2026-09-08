@@ -1,5 +1,5 @@
 import { runRetentionForAllProjects } from '../../services/retention'
-import { requireSession } from '../../utils/ui-auth'
+import { requireAdmin } from '../../utils/ui-auth'
 
 /**
  * Runs retention on demand. The scheduled task in server/tasks/retention.ts
@@ -7,6 +7,6 @@ import { requireSession } from '../../utils/ui-auth'
  * and the only one that exists on serverless.
  */
 export default defineEventHandler(async (event) => {
-  await requireSession(event)
+  await requireAdmin(event)
   return runRetentionForAllProjects()
 })

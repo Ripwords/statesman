@@ -8,6 +8,10 @@ const { data: projects, status, error, refresh } = await useFetch('/api/ui/proje
 
 const creating = ref(false)
 
+// Creating a project is admin-only server-side; a member is offered no button
+// for it rather than a 403 after filling the form in.
+const { isAdmin } = useAuth()
+
 // v1 runs one organization per deployment (spec §5), so any row names it. On an
 // empty list there is no row, and the server resolves it instead.
 const org = computed(() => projects.value?.[0]?.org)
@@ -33,7 +37,7 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
           {{ projects.length }}
         </UBadge>
         <UButton
-          v-if="projects?.length"
+          v-if="projects?.length && isAdmin"
           icon="i-lucide-plus"
           label="New Project"
           @click="creating = true"
@@ -75,10 +79,19 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
       v-else-if="!projects?.length"
       icon="i-lucide-boxes"
       title="No Projects Yet"
-      description="Create a project here, then point a Terraform backend block at it. Projects are never created implicitly: an address that does not match one returns 404, so a typo cannot quietly split your state across two of them."
+      :description="
+        isAdmin
+          ? 'Create a project here, then point a Terraform backend block at it. Projects are never created implicitly: an address that does not match one returns 404, so a typo cannot quietly split your state across two of them.'
+          : 'No projects exist yet. Creating one is limited to admin accounts, so ask an admin to add the first one.'
+      "
     >
       <div class="flex flex-wrap justify-center gap-2">
-        <UButton icon="i-lucide-plus" label="Create Your First Project" @click="creating = true" />
+        <UButton
+          v-if="isAdmin"
+          icon="i-lucide-plus"
+          label="Create Your First Project"
+          @click="creating = true"
+        />
         <UButton
           to="/tokens"
           label="Create a Token"
