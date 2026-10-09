@@ -27,13 +27,19 @@ Use your organisation's settings instead if the repositories belong to one.
 | --------------------------- | ------------------------------------------------------------------ |
 | GitHub App name             | anything unique, for example `statesman-acme`                      |
 | Homepage URL                | your `BETTER_AUTH_URL`                                             |
-| Setup URL                   | `<BETTER_AUTH_URL>/api/github/setup`, with **Redirect on update** ticked |
+| Setup URL | `<BETTER_AUTH_URL>/api/github/setup`, with **Redirect on update** left unticked |
 | Webhook → Active            | ticked                                                             |
 | Webhook URL                 | `<BETTER_AUTH_URL>/api/github/webhook`                             |
 | Webhook secret              | the output of `openssl rand -hex 32`                               |
 | Repository permissions      | **Contents: Read-only**, **Metadata: Read-only**. Nothing else.    |
 | Subscribe to events         | **Push**                                                           |
 | Where can this app be installed | **Only on this account**                                       |
+
+Leave **Redirect on update** unticked. statesman's setup callback only accepts a
+redirect it started itself (it checks a state cookie), so a redirect that GitHub
+initiates after an update would land on the `The install link expired or did not
+start here. Try Connect GitHub again.` error. Repository changes still reach
+statesman through webhooks.
 
 Keep the webhook secret: it becomes `GITHUB_APP_WEBHOOK_SECRET`. GitHub also
 delivers `installation` and `installation_repositories` events to every app
@@ -162,16 +168,19 @@ text is stored on the link, so it stays until the next successful sync.
 
 | Message                                                           | Cause                                                                                                                                                       |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GitHub 404: Not Found` (or another GitHub 404)                   | The branch, the directory or the repository does not exist, or the app cannot see it. Check the branch name and the directory, then the installation's repository list. |
+| `GitHub 404: Not Found` (or another GitHub 404) | The directory or the repository does not exist, or the app cannot see it. Check the directory, then the installation's repository list. |
+| `GitHub 422: …` | GitHub's usual answer for a branch that does not exist. Check the Branch field. |
+| `GitHub <status>: …` | Any other GitHub answer, including 5xx. Read the text after the status. |
 | `GitHub 403: …`                                                   | GitHub refused the request: Contents or Metadata permission missing, or a rate limit. Read the text after the status.                                       |
 | `GitHub 401: …`                                                   | GitHub rejected the app's own credentials: a wrong `GITHUB_APP_ID`, or a private key that does not belong to that app.                                       |
-| `No .tf files in <directory> at <branch>.`                        | The directory exists but holds no `.tf` file directly inside it. Check the directory, or whether the files live in a subdirectory (which is not read).      |
+| `No .tf files in <directory> at <branch>.` | The directory exists but holds no `.tf` file directly inside it. When the Directory field is empty the message reads `No .tf files in the repository root at <branch>.` Check the directory, or whether the files live in a subdirectory (which is not read). |
 | `<directory> is a file, not a directory`                          | The Directory field names a file. Point it at the folder.                                                                                                   |
 | `variable "x" is declared in a.tf and b.tf`                       | Two files in the directory declare the same variable. Terraform would refuse this too. Remove one.                                                          |
 | `<file>:<line>: syntax error`                                     | A `.tf` file does not parse. The other messages of this form, for example `attributes must be on separate lines` or `templates are not allowed in a variables file`, name the file and line in the same way. |
 | `The repository link changed during the sync.`                    | An admin relinked the environment while a sync was running. The result was dropped so it could not land on the new link. Press **Sync now**.               |
 | `The GitHub App no longer has access to this repository.`         | The repository was removed from the installation. Add it back under the installation's settings on GitHub, then press **Sync now**.                         |
-| `This environment is not linked to a repository.`                 | **Sync now** on an environment with no link. Link a repository first.                                                                                       |
+
+**Sync now** on an environment with no link answers 404 `This environment is not linked to a repository.` That is not stored on a link; the panel shows it as the action error. Link a repository first.
 
 A network failure between statesman and GitHub is not stored on the link. **Sync
 now** shows `Could not sync. Check your connection, then try again.` instead.
