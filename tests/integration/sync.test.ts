@@ -110,7 +110,7 @@ beforeAll(async () => {
 })
 
 /** A fake GitHub holding one repo whose files can be swapped between syncs. */
-function fakeGitHub(files: Record<string, string> | 'gone') {
+function fakeGitHub(files: Record<string, string> | 'gone', onList?: () => Promise<void>) {
   const impl: typeof fetch = async (input) => {
     const url = new URL(String(input))
     const p = url.pathname
@@ -119,6 +119,7 @@ function fakeGitHub(files: Record<string, string> | 'gone') {
       return json({ token: 't', expires_at: new Date(Date.now() + 3_600_000).toISOString() }, 201)
     if (p === '/repos/acme/infra/commits/main') return new Response('sha-1')
     if (p === '/repos/acme/infra/contents/envs/dev') {
+      await onList?.()
       if (files === 'gone') return json({ message: 'Not Found' }, 404)
       return json(
         Object.keys(files).map((name) => ({ type: 'file', name, path: `envs/dev/${name}` }))
@@ -185,6 +186,36 @@ describe('syncEnvironment', () => {
     })
     expect(result).toEqual({ ok: false, error: expect.stringContaining('envs/dev/bad.tf') })
     expect((await linkSummary(envId))?.declared).toBeNull()
+  })
+
+  it('fails the whole sync when two files declare the same variable', async () => {
+    await link()
+    await syncEnvironment(envId, { client: fakeGitHub({ 'one.tf': 'variable "old" {}\n' }), hcl })
+    const result = await syncEnvironment(envId, {
+      client: fakeGitHub({ 'a.tf': 'variable "region" {}\n', 'b.tf': 'variable "region" {}\n' }),
+      hcl
+    })
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringMatching(/"region".*envs\/dev\/a\.tf.*envs\/dev\/b\.tf/)
+    })
+    expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['old'])
+  })
+
+  it('does not write onto a link that changed mid-sync', async () => {
+    await link()
+    const relinking = fakeGitHub({ 'variables.tf': 'variable "a" {}\n' }, async () => {
+      await link({ repoId: 77, repoFullName: 'acme/other' })
+    })
+    const result = await syncEnvironment(envId, { client: relinking, hcl })
+    expect(result).toEqual({ ok: false, error: 'The repository link changed during the sync.' })
+    const found = await linkSummary(envId)
+    expect(found?.summary).toMatchObject({
+      repoFullName: 'acme/other',
+      lastSyncedSha: null,
+      lastSyncError: null
+    })
+    expect(found?.declared).toBeNull()
   })
 
   it('refuses an environment with no link', async () => {

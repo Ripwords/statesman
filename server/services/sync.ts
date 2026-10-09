@@ -89,6 +89,10 @@ export async function linkSummary(
   }
 }
 
+const STALE = 'The repository link changed during the sync.'
+
+class SyncConflictError extends Error {}
+
 export type SyncDeps = { client: GitHubClient; hcl: HclToolkit }
 export type SyncResult = { ok: true; count: number; sha: string } | { ok: false; error: string }
 
@@ -106,6 +110,14 @@ export async function syncEnvironment(environmentId: string, deps: SyncDeps): Pr
     .where(eq(repositoryLink.environmentId, environmentId))
   if (!link) return { ok: false, error: 'This environment is not linked to a repository.' }
 
+  // The link may be replaced while this sync is in flight; a guarded single
+  // statement keeps a stale sync from writing onto the new link's row.
+  const unchanged = and(
+    eq(repositoryLink.environmentId, environmentId),
+    eq(repositoryLink.repoId, link.repoId),
+    eq(repositoryLink.ref, link.ref),
+    eq(repositoryLink.directory, link.directory)
+  )
   try {
     // Every read is pinned to one sha, so a push landing mid-sync cannot mix
     // two commits' files into one declared set.
@@ -123,22 +135,37 @@ export async function syncEnvironment(environmentId: string, deps: SyncDeps): Pr
       )
     }
     const declared: DeclaredVariable[] = []
+    const origin = new Map<string, string>()
     for (const path of paths) {
       const source = await deps.client.readFile(link.installationId, link.repoFullName, path, sha)
-      declared.push(...deps.hcl.extractVariables(source, path))
+      for (const variable of deps.hcl.extractVariables(source, path)) {
+        const first = origin.get(variable.name)
+        if (first) {
+          throw new SyncConflictError(
+            `variable "${variable.name}" is declared in ${first} and ${path}`
+          )
+        }
+        origin.set(variable.name, path)
+        declared.push(variable)
+      }
     }
-    await db()
+    const written = await db()
       .update(repositoryLink)
       .set({ declared, lastSyncedAt: new Date(), lastSyncedSha: sha, lastSyncError: null })
-      .where(eq(repositoryLink.environmentId, environmentId))
+      .where(unchanged)
+      .returning()
+    if (written.length === 0) return { ok: false, error: STALE }
     return { ok: true, count: declared.length, sha }
   } catch (error) {
-    if (!(error instanceof GitHubError) && !(error instanceof HclError)) throw error
+    if (
+      !(error instanceof GitHubError) &&
+      !(error instanceof HclError) &&
+      !(error instanceof SyncConflictError)
+    ) {
+      throw error
+    }
     const message = error.message
-    await db()
-      .update(repositoryLink)
-      .set({ lastSyncError: message })
-      .where(eq(repositoryLink.environmentId, environmentId))
+    await db().update(repositoryLink).set({ lastSyncError: message }).where(unchanged)
     return { ok: false, error: message }
   }
 }
