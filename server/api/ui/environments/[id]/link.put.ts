@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
     }
   })
   // The link is saved, so from here a failure is a failed first sync, never a
-  // failed link: a 500 would tell the admin "Could not link" about a link that exists.
+  // failed link: a 500 would tell the owner or admin "Could not link" about a link that exists.
   try {
     return await syncEnvironment(id, { client, hcl: await hcl() })
   } catch (error) {

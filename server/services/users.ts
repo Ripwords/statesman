@@ -42,6 +42,7 @@ export async function listAccounts(): Promise<Account[]> {
       org: organization.slug
     })
     .from(projectMember)
+    // organizationId holds a project id: the plugin's organization model is renamed to projects.
     .innerJoin(project, eq(project.id, projectMember.organizationId))
     .innerJoin(organization, eq(organization.id, project.orgId))
     .orderBy(organization.slug, project.slug)

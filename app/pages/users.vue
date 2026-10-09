@@ -105,11 +105,12 @@ function messageOf(caught: unknown, fallback: string): string {
     <AdminOnly what="Managing accounts">
       <div class="space-y-6">
         <p class="max-w-prose text-sm text-muted text-pretty">
-          Admins manage accounts, roles, tokens, locks and history. Members read projects, versions
-          and diffs. Both read every project’s decrypted state, so a member is not a reduced-trust
-          account — add people here only if they may see every secret in every state file. New
-          accounts are made from the command line with
-          <code class="text-xs" translate="no">pnpm user:create</code>.
+          Admins manage accounts and reach every project. Members reach only the projects they hold
+          a role on — viewer, editor or owner — and every role reads that project’s decrypted state,
+          so give someone a role only if they may see every secret in its state files. New accounts
+          are made from the command line with
+          <code class="text-xs" translate="no">pnpm user:create</code>, then added from each
+          project’s Members tab.
         </p>
 
         <div aria-live="polite" class="space-y-3">
@@ -166,7 +167,9 @@ function messageOf(caught: unknown, fallback: string): string {
             </span>
 
             <div class="flex w-28 justify-end">
-              <UPopover v-if="u.projects.length > 0">
+              <!-- An admin reaches every project without holding a role on any. -->
+              <span v-if="roleOf(u.role) === 'admin'" class="text-sm text-muted">All projects</span>
+              <UPopover v-else-if="u.projects.length > 0">
                 <UButton
                   color="neutral"
                   variant="ghost"

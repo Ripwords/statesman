@@ -93,7 +93,7 @@ onMounted(() => {
     <EmptyState
       v-else-if="!projects?.length"
       :icon="isAdmin ? 'i-lucide-boxes' : 'i-lucide-folder-lock'"
-      :title="isAdmin ? 'No Projects Yet' : 'No projects yet'"
+      title="No Projects Yet"
       :description="
         isAdmin
           ? 'Create a project here, then point a Terraform backend block at it. Projects are never created implicitly: an address that does not match one returns 404, so a typo cannot quietly split your state across two of them.'
