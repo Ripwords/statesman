@@ -249,12 +249,12 @@ const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
   ['GET /api/github/setup', (h) => githubSetup(testEvent({ headers: h })), ADMIN],
   ['GET /api/ui/github', (h) => githubStatus(testEvent({ headers: h })), ANY_SESSION],
   ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h })), ADMIN],
-  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h })), OWNER_SOMEWHERE],
+  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h })), ANY_SESSION],
   ['POST /api/ui/tokens', (h) => createToken(testEvent({ headers: h, body: {} })), OWNER_SOMEWHERE],
   [
     'DELETE /api/ui/tokens/:id',
     (h) => deleteToken(testEvent({ headers: h, params: { id: 'k1' } })),
-    OWNER_SOMEWHERE
+    ANY_SESSION
   ]
 ]
 

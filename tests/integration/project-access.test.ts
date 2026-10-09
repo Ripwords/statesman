@@ -24,9 +24,9 @@ import { ulid } from 'ulid'
 import authCatchAll from '../../server/api/auth/[...all]'
 
 /**
- * The backfill runs inside a transaction that is always rolled back: it is a
- * cross join over every user and every project, and other suites share this
- * database in parallel. Committing it would make their non-members viewers.
+ * The backfill runs against scratch copies of the tables in a private schema,
+ * inside a transaction that is always rolled back: it is a cross join over
+ * every user and project, and other suites share this database in parallel.
  */
 describe('migration backfill', () => {
   it('makes every non-admin a viewer on every project and gives admins no rows', async () => {
@@ -47,6 +47,22 @@ describe('migration backfill', () => {
     await client.connect()
     try {
       await client.query('BEGIN')
+      // The backfill is a cross join over every user and project. Run against
+      // scratch copies in a private schema so concurrent suites cannot race it.
+      // LIKE ... INCLUDING ALL keeps the unique indexes ON CONFLICT needs and
+      // drops foreign keys; ROLLBACK drops the schema.
+      const scratch = `backfill_${ulid().toLowerCase()}`
+      await client.query(`create schema ${scratch}`)
+      for (const table of [
+        'organization',
+        'project',
+        '"user"',
+        'project_access',
+        'project_member'
+      ]) {
+        await client.query(`create table ${scratch}.${table} (like public.${table} including all)`)
+      }
+      await client.query(`set local search_path to ${scratch}`)
       const orgId = ulid()
       const p1 = ulid()
       const p2 = ulid()
@@ -67,23 +83,16 @@ describe('migration backfill', () => {
       )
       for (const statement of backfill) await client.query(statement)
 
-      const access = await client.query(`select id from project_access where id = any($1)`, [
-        [p1, p2]
-      ])
-      expect(access.rowCount).toBe(2)
+      const access = await client.query(`select id from project_access`)
+      expect(access.rows.map((r) => r.id).toSorted()).toEqual([p1, p2].toSorted())
       const members = await client.query(
-        `select organization_id, user_id, role from project_member where organization_id = any($1) order by user_id`,
-        [[p1, p2]]
+        `select organization_id, user_id, role from project_member order by user_id`
       )
+      expect(members.rowCount).toBe(4)
+      expect(members.rows.every((r) => r.role === 'viewer')).toBe(true)
       expect(members.rows.filter((r) => r.user_id === admin)).toHaveLength(0)
-      expect(members.rows.filter((r) => r.user_id === m1).map((r) => r.role)).toEqual([
-        'viewer',
-        'viewer'
-      ])
-      expect(members.rows.filter((r) => r.user_id === m2).map((r) => r.role)).toEqual([
-        'viewer',
-        'viewer'
-      ])
+      expect(members.rows.filter((r) => r.user_id === m1)).toHaveLength(2)
+      expect(members.rows.filter((r) => r.user_id === m2)).toHaveLength(2)
     } finally {
       await client.query('ROLLBACK')
       await client.end()

@@ -14,6 +14,7 @@ import { apikey, projectMember, user } from '../../server/db/schema'
 import { auth } from '../../server/utils/auth'
 import { requireCreatorAccess, authenticateTf } from '../../server/utils/tf-auth'
 import createToken from '../../server/api/ui/tokens.post'
+import listTokens from '../../server/api/ui/tokens.get'
 import deleteToken from '../../server/api/ui/tokens/[id].delete'
 
 // The shared Nitro shim has no request-header helpers; authenticateTf needs two.
@@ -166,6 +167,16 @@ describe('use-time ceiling', () => {
   })
 })
 
+describe('admin creator', () => {
+  it('passes for a projects-scope token with no membership row', async () => {
+    const a = await provisionUser(`tc-adm2-${Date.now()}@example.com`, PASSWORD, 'admin')
+    const key = await mint(a.id, { kind: 'projects', projects: [`${ORG}/p`] }, ['write'], ['read'])
+    const p = await principalFor(key)
+    await expect(requireCreatorAccess(p, resolved(), 'state:write')).resolves.toBeUndefined()
+    await expect(requireCreatorAccess(p, resolved(), 'vars:read')).resolves.toBeUndefined()
+  })
+})
+
 describe('creation rules', () => {
   it('refuses a non-admin an all-scope token', async () => {
     expect(
@@ -233,6 +244,30 @@ describe('creation rules', () => {
 })
 
 describe('revocation', () => {
+  it('lets a former owner, now a viewer, list and revoke their own token', async () => {
+    const stamp = Date.now()
+    const f = await provisionUser(`tc-former-${stamp}@example.com`, PASSWORD)
+    await setRole(f.id, 'member')
+    await grantProjectRole(projectId, f.id, 'owner')
+    const h = Object.fromEntries((await signInHeaders(f.email, PASSWORD)).entries())
+    const created = await createToken(
+      testEvent({
+        headers: h,
+        body: {
+          name: 'mine',
+          actions: ['read'],
+          scope: { kind: 'projects', projects: [`${ORG}/p`] }
+        }
+      })
+    )
+    await grantProjectRole(projectId, f.id, 'viewer')
+    const listed = await listTokens(testEvent({ headers: h }))
+    expect(listed.map((k) => k.id)).toContain(created.id)
+    await deleteToken(testEvent({ headers: h, params: { id: created.id } }))
+    const after = await db().select({ id: apikey.id }).from(apikey).where(eq(apikey.id, created.id))
+    expect(after).toHaveLength(0)
+  })
+
   it('does not let a non-admin owner delete a token created by someone else', async () => {
     const stamp = Date.now()
     const other = await provisionUser(`tc-other-${stamp}@example.com`, PASSWORD)
@@ -248,8 +283,7 @@ describe('revocation', () => {
     const s = await status(
       deleteToken(testEvent({ headers: owner.h, params: { id: keyId ?? '' } }))
     )
-    expect(s).toBeDefined()
-    expect(s).toBeGreaterThanOrEqual(400)
+    expect(s).toBe(404)
     const after = await db()
       .select({ id: apikey.id })
       .from(apikey)
