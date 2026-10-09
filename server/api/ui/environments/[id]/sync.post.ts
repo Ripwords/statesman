@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { requireAdmin } from '../../../../utils/ui-auth'
 import { requireGitHub } from '../../../../utils/github-guard'
 import { environmentContext } from '../../../../services/variables'
-import { syncEnvironment } from '../../../../services/sync'
+import { linkSummary, syncEnvironment } from '../../../../services/sync'
 import { recordAuditBestEffort } from '../../../../services/audit'
 import { hcl } from '../../../../hcl'
 
@@ -13,6 +13,11 @@ export default defineEventHandler(async (event) => {
   const client = requireGitHub()
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
   const ctx = await environmentContext(id)
+  if (!(await linkSummary(id)))
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'This environment is not linked to a repository.'
+    })
   const result = await syncEnvironment(id, { client, hcl: await hcl() })
   if (!result.ok) {
     await recordAuditBestEffort({

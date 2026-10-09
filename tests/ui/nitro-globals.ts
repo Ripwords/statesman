@@ -48,11 +48,43 @@ async function runValidator<T>(data: unknown, validator: Validator<T>): Promise<
   }
 }
 
-type TestEventContext = { params: Record<string, string>; body: unknown }
+type CookieOptions = Record<string, unknown>
+type CookieWrite = { name: string; value: string | null; options: CookieOptions }
+type TestEventContext = {
+  params: Record<string, string>
+  body: unknown
+  query: Record<string, string>
+  cookieWrites: CookieWrite[]
+  redirect: string | null
+}
 
 function contextOf(event: H3Event): TestEventContext {
   const { context } = event as unknown as { context: Partial<TestEventContext> }
-  return { params: context.params ?? {}, body: context.body }
+  return {
+    params: context.params ?? {},
+    body: context.body,
+    query: context.query ?? {},
+    cookieWrites: context.cookieWrites ?? [],
+    redirect: context.redirect ?? null
+  }
+}
+
+function eventContext(event: H3Event): Partial<TestEventContext> {
+  return (event as unknown as { context: Partial<TestEventContext> }).context
+}
+
+function readCookie(event: H3Event, name: string): string | undefined {
+  const header = (event as unknown as { headers: Headers }).headers.get('cookie') ?? ''
+  for (const part of header.split(';')) {
+    const [key, ...rest] = part.trim().split('=')
+    if (key === name) return decodeURIComponent(rest.join('='))
+  }
+  return undefined
+}
+
+function writeCookie(event: H3Event, write: CookieWrite): void {
+  const context = eventContext(event)
+  context.cookieWrites = [...(context.cookieWrites ?? []), write]
 }
 
 Object.assign(globalThis, {
@@ -62,6 +94,18 @@ Object.assign(globalThis, {
     runValidator(contextOf(event).params, validator),
   readValidatedBody: <T>(event: H3Event, validator: Validator<T>) =>
     runValidator(contextOf(event).body, validator),
+  getValidatedQuery: <T>(event: H3Event, validator: Validator<T>) =>
+    runValidator(contextOf(event).query, validator),
+  getCookie: (event: H3Event, name: string) => readCookie(event, name),
+  setCookie: (event: H3Event, name: string, value: string, options: CookieOptions = {}) =>
+    writeCookie(event, { name, value, options }),
+  deleteCookie: (event: H3Event, name: string, options: CookieOptions = {}) =>
+    writeCookie(event, { name, value: null, options }),
+  // h3 answers a redirect with 302 and a Location header; the test reads where it pointed.
+  sendRedirect: (event: H3Event, location: string) => {
+    eventContext(event).redirect = location
+    return `Redirecting to ${location}`
+  },
   useStorage: (_base: string) => ({
     getItemRaw: async (key: string) => readFileSync(join('server/assets', key.replaceAll(':', '/')))
   })
@@ -71,6 +115,7 @@ export type TestEventInit = {
   headers?: Record<string, string>
   params?: Record<string, string>
   body?: unknown
+  query?: Record<string, string>
 }
 
 /**
@@ -82,6 +127,15 @@ export type TestEventInit = {
 export function testEvent(init: TestEventInit = {}): H3Event {
   return {
     headers: new Headers(init.headers ?? {}),
-    context: { params: init.params ?? {}, body: init.body }
+    context: { params: init.params ?? {}, body: init.body, query: init.query ?? {} }
   } as unknown as H3Event
+}
+
+/** What a handler did to the response, for tests that drive cookie and redirect routes. */
+export function responseOf(event: H3Event): {
+  cookieWrites: CookieWrite[]
+  redirect: string | null
+} {
+  const { cookieWrites, redirect } = contextOf(event)
+  return { cookieWrites, redirect }
 }

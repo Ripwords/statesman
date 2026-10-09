@@ -18,6 +18,7 @@ import putVariable from '../../server/api/ui/environments/[id]/variables/[name].
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
 import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
 import githubInstall from '../../server/api/github/install.get'
+import githubSetup from '../../server/api/github/setup.get'
 import githubStatus from '../../server/api/ui/github.get'
 import listRepos from '../../server/api/ui/github/installations/[id]/repositories.get'
 import putLink from '../../server/api/ui/environments/[id]/link.put'
@@ -86,6 +87,7 @@ const ADMIN_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<
     (h) => importVariables(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
   ],
   ['GET /api/github/install', (h) => githubInstall(testEvent({ headers: h }))],
+  ['GET /api/github/setup', (h) => githubSetup(testEvent({ headers: h }))],
   [
     'GET /api/ui/github/installations/:id/repositories',
     (h) => listRepos(testEvent({ headers: h, params: { id: '1' } }))

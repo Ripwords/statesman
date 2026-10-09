@@ -1,11 +1,11 @@
 import { randomBytes } from 'node:crypto'
 import { requireAdmin } from '../../utils/ui-auth'
-import { requireGitHub } from '../../utils/github-guard'
+import { requireGitHubApp } from '../../utils/github-guard'
 import { env } from '../../utils/env'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
-  requireGitHub()
+  const app = requireGitHubApp()
   const state = randomBytes(24).toString('base64url')
   setCookie(event, 'statesman_gh_state', state, {
     httpOnly: true,
@@ -14,6 +14,6 @@ export default defineEventHandler(async (event) => {
     path: '/api/github',
     maxAge: 600
   })
-  const slug = env().GITHUB_APP?.slug ?? ''
+  const slug = encodeURIComponent(app.slug)
   return sendRedirect(event, `https://github.com/apps/${slug}/installations/new?state=${state}`)
 })

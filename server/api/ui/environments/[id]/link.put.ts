@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { requireAdmin } from '../../../../utils/ui-auth'
-import { requireGitHub } from '../../../../utils/github-guard'
+import { requireGitHub, requireInstallation, viaGitHub } from '../../../../utils/github-guard'
 import { environmentContext } from '../../../../services/variables'
-import { linkRepository, syncEnvironment } from '../../../../services/sync'
+import { linkRepository, normaliseDirectory, syncEnvironment } from '../../../../services/sync'
 import { recordAuditBestEffort } from '../../../../services/audit'
 import { hcl } from '../../../../hcl'
 
@@ -22,21 +22,23 @@ export default defineEventHandler(async (event) => {
   const ctx = await environmentContext(id)
   // The repo list comes from GitHub, not the request, so a link can only name
   // a repository this installation can actually read.
-  const repo = (await client.listRepositories(input.installationId)).find(
-    (r) => r.id === input.repoId
-  )
+  await requireInstallation(input.installationId)
+  const directory = normaliseDirectory(input.directory)
+  const repos = await viaGitHub(() => client.listRepositories(input.installationId))
+  const repo = repos.find((r) => r.id === input.repoId)
   if (!repo)
     throw createError({
       statusCode: 400,
       statusMessage: 'The GitHub App cannot see that repository.'
     })
+  const ref = input.ref ?? repo.defaultBranch
   await linkRepository({
     environmentId: id,
     installationId: input.installationId,
     repoId: repo.id,
     repoFullName: repo.fullName,
-    ref: input.ref ?? repo.defaultBranch,
-    directory: input.directory
+    ref,
+    directory
   })
   await recordAuditBestEffort({
     orgId: ctx.orgId,
@@ -47,8 +49,8 @@ export default defineEventHandler(async (event) => {
     meta: {
       environment: ctx.slug,
       repo: repo.fullName,
-      ref: input.ref ?? repo.defaultBranch,
-      directory: input.directory
+      ref,
+      directory
     }
   })
   return syncEnvironment(id, { client, hcl: await hcl() })
