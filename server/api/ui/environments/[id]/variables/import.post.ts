@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { requireAdmin } from '../../../../../utils/ui-auth'
+import { requireSession } from '../../../../../utils/ui-auth'
+import {
+  projectIdOfEnvironment,
+  requireProjectPermission
+} from '../../../../../utils/project-access'
 import { environmentContext, importValues } from '../../../../../services/variables'
 import { recordAuditBestEffort } from '../../../../../services/audit'
 import { hcl } from '../../../../../hcl'
@@ -9,8 +13,13 @@ import { importVariablesSchema, type JsonValue } from '../../../../../../shared/
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
+  await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  const session = await requireProjectPermission(
+    event,
+    await projectIdOfEnvironment(id),
+    'variable:write'
+  )
   const input = await readValidatedBody(event, importVariablesSchema.parse)
   const ctx = await environmentContext(id)
   let values: Record<string, JsonValue>

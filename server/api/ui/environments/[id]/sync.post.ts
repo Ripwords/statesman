@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { requireAdmin } from '../../../../utils/ui-auth'
+import { requireSession } from '../../../../utils/ui-auth'
+import { projectIdOfEnvironment, requireProjectPermission } from '../../../../utils/project-access'
 import { requireGitHub } from '../../../../utils/github-guard'
 import { environmentContext } from '../../../../services/variables'
 import { linkSummary, syncEnvironment } from '../../../../services/sync'
@@ -9,9 +10,14 @@ import { hcl } from '../../../../hcl'
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
-  const client = requireGitHub()
+  await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  const session = await requireProjectPermission(
+    event,
+    await projectIdOfEnvironment(id),
+    'environment:sync'
+  )
+  const client = requireGitHub()
   const ctx = await environmentContext(id)
   if (!(await linkSummary(id)))
     throw createError({

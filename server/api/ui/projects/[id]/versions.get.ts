@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '../../../../db/client'
 import { projectState, stateVersion, user } from '../../../../db/schema'
 import { requireSession } from '../../../../utils/ui-auth'
+import { requireProjectPermission } from '../../../../utils/project-access'
 
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event) => {
   // 400 is the right status for a malformed id here, so h3's blanket rewrite of
   // a validator throw needs no catch — CARRY-FORWARD §7c.
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  await requireProjectPermission(event, id, 'project:read')
 
   const pointer = await db()
     .select({ currentVersionId: projectState.currentVersionId })

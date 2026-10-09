@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { requireSession } from '../../../../utils/ui-auth'
+import { projectIdOfEnvironment, requireProjectPermission } from '../../../../utils/project-access'
 import { environmentContext, listStoredForUi } from '../../../../services/variables'
 import { linkSummary } from '../../../../services/sync'
 import { mergeVariables } from '../../../../utils/variable-status'
@@ -9,6 +10,7 @@ const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 export default defineEventHandler(async (event) => {
   await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  await requireProjectPermission(event, await projectIdOfEnvironment(id), 'project:read')
   const ctx = await environmentContext(id)
   const found = await linkSummary(id)
   return {

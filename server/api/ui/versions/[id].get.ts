@@ -6,6 +6,7 @@ import { store } from '../../../storage'
 import { open } from '../../../utils/crypto'
 import { env } from '../../../utils/env'
 import { requireSession } from '../../../utils/ui-auth'
+import { projectIdOfVersion, requireProjectPermission } from '../../../utils/project-access'
 
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
@@ -17,6 +18,7 @@ const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 export default defineEventHandler(async (event) => {
   await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  await requireProjectPermission(event, await projectIdOfVersion(id), 'project:read')
 
   const rows = await db()
     .select({ blobKey: stateVersion.blobKey })

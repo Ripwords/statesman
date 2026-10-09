@@ -4,7 +4,14 @@ import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { GitHubClient, type github as githubFn } from '../../server/github/client'
 import type * as ClientModule from '../../server/github/client'
-import { provisionUser, signInHeaders, setRole, resetDb, seedProject } from '../protocol/helpers'
+import {
+  provisionUser,
+  signInHeaders,
+  setRole,
+  resetDb,
+  seedProject,
+  grantProjectRole
+} from '../protocol/helpers'
 import { db } from '../../server/db/client'
 import { auditLog, repositoryLink } from '../../server/db/schema'
 import listEnvironments from '../../server/api/ui/projects/[id]/environments.get'
@@ -46,6 +53,7 @@ beforeAll(async () => {
   adminId = a.id
   await setRole(a.id, 'admin')
   await setRole(m.id, 'member')
+  await grantProjectRole(projectId, m.id, 'viewer')
   admin = Object.fromEntries((await signInHeaders(a.email, PASSWORD)).entries())
   member = Object.fromEntries((await signInHeaders(m.email, PASSWORD)).entries())
   const created = await createEnvironment(

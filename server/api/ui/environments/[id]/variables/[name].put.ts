@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { requireAdmin } from '../../../../../utils/ui-auth'
+import { requireSession } from '../../../../../utils/ui-auth'
+import {
+  projectIdOfEnvironment,
+  requireProjectPermission
+} from '../../../../../utils/project-access'
 import { environmentContext, setVariable } from '../../../../../services/variables'
 import { recordAuditBestEffort } from '../../../../../services/audit'
 import { setVariableSchema, variableNameSchema } from '../../../../../../shared/schemas/variable'
@@ -7,8 +11,13 @@ import { setVariableSchema, variableNameSchema } from '../../../../../../shared/
 const paramsSchema = z.object({ id: z.string().min(1).max(64), name: variableNameSchema })
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
+  await requireSession(event)
   const { id, name } = await getValidatedRouterParams(event, paramsSchema.parse)
+  const session = await requireProjectPermission(
+    event,
+    await projectIdOfEnvironment(id),
+    'variable:write'
+  )
   const input = await readValidatedBody(event, setVariableSchema.parse)
   const ctx = await environmentContext(id)
   const outcome = await setVariable({ environmentId: id, name, input, userId: session.userId })

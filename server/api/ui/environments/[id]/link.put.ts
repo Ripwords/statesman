@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { requireAdmin } from '../../../../utils/ui-auth'
+import { requireSession } from '../../../../utils/ui-auth'
+import { projectIdOfEnvironment, requireProjectPermission } from '../../../../utils/project-access'
 import { requireGitHub, requireInstallation, viaGitHub } from '../../../../utils/github-guard'
 import { environmentContext } from '../../../../services/variables'
 import { linkRepository, normaliseDirectory, syncEnvironment } from '../../../../services/sync'
@@ -15,9 +16,14 @@ export const linkInputSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
-  const client = requireGitHub()
+  await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  const session = await requireProjectPermission(
+    event,
+    await projectIdOfEnvironment(id),
+    'environment:link'
+  )
+  const client = requireGitHub()
   const input = await readValidatedBody(event, linkInputSchema.parse)
   const ctx = await environmentContext(id)
   // The repo list comes from GitHub, not the request, so a link can only name

@@ -4,19 +4,19 @@ import { db } from '../../db/client'
 import { project, organization } from '../../db/schema'
 import { RollbackError, rollbackTo } from '../../services/state'
 import { recordAuditBestEffort } from '../../services/audit'
-import { requireAdmin } from '../../utils/ui-auth'
+import { requireSession } from '../../utils/ui-auth'
+import { requireProjectPermission } from '../../utils/project-access'
 
 const bodySchema = z.object({ projectId: z.string().min(1), versionId: z.string().min(1) })
 
 export default defineEventHandler(async (event) => {
-  // requireAdmin, not a second inline copy of it: the two had already drifted
-  // and the guard is the only thing between a stranger and every project.
-  const session = await requireAdmin(event)
+  await requireSession(event)
 
   // 400 is the right status for a malformed body, so h3's rewrite of any
   // validator throw into "400 Validation Error" is exactly what we want here
   // and needs no wrapping (CARRY-FORWARD §7c).
   const input = await readValidatedBody(event, bodySchema.parse)
+  const session = await requireProjectPermission(event, input.projectId, 'project:rollback')
 
   const rows = await db()
     .select({ orgId: project.orgId, orgSlug: organization.slug, projectSlug: project.slug })

@@ -3,7 +3,8 @@ import { ulid } from 'ulid'
 import { z } from 'zod'
 import { db } from '../../../../db/client'
 import { auditLog, project, stateLock } from '../../../../db/schema'
-import { requireAdmin } from '../../../../utils/ui-auth'
+import { requireSession } from '../../../../utils/ui-auth'
+import { requireProjectPermission } from '../../../../utils/project-access'
 
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
@@ -12,8 +13,9 @@ const paramsSchema = z.object({ id: z.string().min(1).max(64) })
  * one dashboard action that can corrupt state, so it has to leave a trace.
  */
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
+  await requireSession(event)
   const { id } = await getValidatedRouterParams(event, paramsSchema.parse)
+  const session = await requireProjectPermission(event, id, 'project:unlock')
 
   const rows = await db().select({ orgId: project.orgId }).from(project).where(eq(project.id, id))
   const orgId = rows[0]?.orgId

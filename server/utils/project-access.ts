@@ -110,6 +110,16 @@ export async function effectiveRole(
   return parsed.success ? parsed.data : null
 }
 
+/** True when the account owns at least one project. Gates the tokens page and repository listing. */
+export async function ownsAnyProject(userId: string): Promise<boolean> {
+  const rows = await db()
+    .select({ id: projectMember.id })
+    .from(projectMember)
+    .where(and(eq(projectMember.userId, userId), eq(projectMember.role, 'owner')))
+    .limit(1)
+  return rows.length > 0
+}
+
 /** effectiveRole for a caller known only by id, such as a token's creator. */
 export async function effectiveRoleOfUser(
   userId: string,

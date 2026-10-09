@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { testEvent, isApiError } from '../ui/nitro-globals'
-import { provisionUser, signInHeaders, setRole, seedOrg, resetDb } from '../protocol/helpers'
+import { eq } from 'drizzle-orm'
+import { ulid } from 'ulid'
+import {
+  provisionUser,
+  signInHeaders,
+  setRole,
+  resetDb,
+  seedProject,
+  grantProjectRole
+} from '../protocol/helpers'
+import { db } from '../../server/db/client'
+import { environment, projectMember, stateVersion } from '../../server/db/schema'
+import { NOT_FOUND } from '../../server/utils/project-access'
 
 import listProjects from '../../server/api/ui/projects.get'
 import createProject from '../../server/api/ui/projects.post'
@@ -27,150 +39,268 @@ import syncNow from '../../server/api/ui/environments/[id]/sync.post'
 import rollback from '../../server/api/admin/rollback.post'
 import retention from '../../server/api/admin/retention.post'
 
+type Actor = 'anonymous' | 'stranger' | 'viewer' | 'editor' | 'owner' | 'admin'
+type Outcome = 401 | 403 | 404 | 'pass'
+type Ids = { projectId: string; envId: string; versionId: string }
+
 const PASSWORD = 'correct horse battery staple'
 const ORG = 'route-roles'
-
-let admin: Record<string, string>
-let member: Record<string, string>
+const headers = {} as Record<Actor, Record<string, string>>
+let ids: Ids
 
 beforeAll(async () => {
   await resetDb(ORG)
-  await seedOrg(ORG)
+  const projectId = await seedProject(ORG, 'p')
+  const envId = ulid()
+  await db().insert(environment).values({ id: envId, projectId, slug: 'dev' })
+  const versionId = ulid()
+  await db()
+    .insert(stateVersion)
+    .values({ id: versionId, projectId, sizeBytes: 0, md5: 'x', blobKey: `missing/${versionId}` })
+  ids = { projectId, envId, versionId }
+  headers.anonymous = {}
   const stamp = Date.now()
-  const a = await provisionUser(`rr-admin-${stamp}@example.com`, PASSWORD)
-  const m = await provisionUser(`rr-member-${stamp}@example.com`, PASSWORD)
-  await setRole(a.id, 'admin')
-  await setRole(m.id, 'member')
-  admin = Object.fromEntries((await signInHeaders(a.email, PASSWORD)).entries())
-  member = Object.fromEntries((await signInHeaders(m.email, PASSWORD)).entries())
+  for (const actor of ['stranger', 'viewer', 'editor', 'owner', 'admin'] as const) {
+    const u = await provisionUser(`rr-${actor}-${stamp}@example.com`, PASSWORD)
+    await setRole(u.id, actor === 'admin' ? 'admin' : 'member')
+    if (actor === 'viewer' || actor === 'editor' || actor === 'owner') {
+      await grantProjectRole(projectId, u.id, actor)
+    }
+    headers[actor] = Object.fromEntries((await signInHeaders(u.email, PASSWORD)).entries())
+  }
 })
 
-/**
- * Every route that CHANGES something. Each is driven with a member's real
- * session; the assertion is 403 and nothing else, which also pins that the
- * guard runs before the body or route parameter is read — several of these are
- * called with no body at all and would be a 400 if the order ever flipped.
- */
-const ADMIN_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<unknown>]> = [
+// READ = viewer+ | EDIT = editor+ | OWN = owner+ | ADMIN = deployment admin only
+const READ: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 404,
+  viewer: 'pass',
+  editor: 'pass',
+  owner: 'pass',
+  admin: 'pass'
+}
+const EDIT: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 404,
+  viewer: 403,
+  editor: 'pass',
+  owner: 'pass',
+  admin: 'pass'
+}
+const OWN: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 404,
+  viewer: 403,
+  editor: 403,
+  owner: 'pass',
+  admin: 'pass'
+}
+const ADMIN: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 403,
+  viewer: 403,
+  editor: 403,
+  owner: 403,
+  admin: 'pass'
+}
+const ANY_SESSION: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 'pass',
+  viewer: 'pass',
+  editor: 'pass',
+  owner: 'pass',
+  admin: 'pass'
+}
+const OWNER_SOMEWHERE: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 403,
+  viewer: 403,
+  editor: 403,
+  owner: 'pass',
+  admin: 'pass'
+}
+const UNKNOWN_ENV: Record<Actor, Outcome> = {
+  anonymous: 401,
+  stranger: 404,
+  viewer: 404,
+  editor: 404,
+  owner: 404,
+  admin: 404
+}
+
+type Call = (h: Record<string, string>, i: Ids) => Promise<unknown>
+const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
+  ['GET /api/ui/projects', (h) => listProjects(testEvent({ headers: h })), ANY_SESSION],
   [
     'POST /api/ui/projects',
-    (h) => createProject(testEvent({ headers: h, body: { project: 'x' } }))
+    (h) => createProject(testEvent({ headers: h, body: { project: 'x' } })),
+    ADMIN
   ],
-  [
-    'DELETE /api/ui/projects/:id/lock',
-    (h) => forceUnlock(testEvent({ headers: h, params: { id: 'p1' } }))
-  ],
-  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h }))],
-  ['POST /api/ui/tokens', (h) => createToken(testEvent({ headers: h, body: {} }))],
-  [
-    'DELETE /api/ui/tokens/:id',
-    (h) => deleteToken(testEvent({ headers: h, params: { id: 'k1' } }))
-  ],
-  [
-    'POST /api/ui/projects/:id/environments',
-    (h) => createEnvironment(testEvent({ headers: h, params: { id: 'p1' }, body: { slug: 'x' } }))
-  ],
-  [
-    'DELETE /api/ui/environments/:id',
-    (h) => deleteEnvironment(testEvent({ headers: h, params: { id: 'e1' } }))
-  ],
-  [
-    'PUT /api/ui/environments/:id/variables/:name',
-    (h) => putVariable(testEvent({ headers: h, params: { id: 'e1', name: 'x' }, body: {} }))
-  ],
-  [
-    'DELETE /api/ui/environments/:id/variables/:name',
-    (h) => deleteVariable(testEvent({ headers: h, params: { id: 'e1', name: 'x' } }))
-  ],
-  [
-    'POST /api/ui/environments/:id/variables/import',
-    (h) => importVariables(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
-  ],
-  ['GET /api/github/install', (h) => githubInstall(testEvent({ headers: h }))],
-  ['GET /api/github/setup', (h) => githubSetup(testEvent({ headers: h }))],
-  [
-    'GET /api/ui/github/installations/:id/repositories',
-    (h) => listRepos(testEvent({ headers: h, params: { id: '1' } }))
-  ],
-  [
-    'PUT /api/ui/environments/:id/link',
-    (h) => putLink(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
-  ],
-  [
-    'DELETE /api/ui/environments/:id/link',
-    (h) => deleteLink(testEvent({ headers: h, params: { id: 'e1' } }))
-  ],
-  [
-    'POST /api/ui/environments/:id/sync',
-    (h) => syncNow(testEvent({ headers: h, params: { id: 'e1' } }))
-  ],
-  ['POST /api/admin/rollback', (h) => rollback(testEvent({ headers: h, body: {} }))],
-  ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h }))]
-]
-
-describe.each(ADMIN_ROUTES)('%s', (_name, call) => {
-  it('refuses a member with 403', async () => {
-    await expect(call(member)).rejects.toMatchObject({ statusCode: 403 })
-  })
-
-  it('refuses an anonymous caller with 401', async () => {
-    await expect(call({})).rejects.toMatchObject({ statusCode: 401 })
-  })
-
-  it('does not answer 403 to an admin', async () => {
-    // The call may still fail on its own terms — a token id that does not
-    // exist, an empty body — and that is fine. What must not happen is the
-    // authorization refusal, so only the status is asserted, always.
-    expect(await statusOf(call(admin))).not.toBe(403)
-  })
-})
-
-/**
- * Reading is a member's job. These must not become admin-only by accident,
- * which is the likeliest way this change breaks: a guard swapped one line too
- * far down the file.
- */
-const READ_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<unknown>]> = [
-  ['GET /api/ui/projects', (h) => listProjects(testEvent({ headers: h }))],
   [
     'GET /api/ui/projects/:id/versions',
-    (h) => listVersions(testEvent({ headers: h, params: { id: 'p1' } }))
+    (h, i) => listVersions(testEvent({ headers: h, params: { id: i.projectId } })),
+    READ
   ],
   [
     'GET /api/ui/versions/:id',
-    (h) => readVersion(testEvent({ headers: h, params: { id: '01ABC' } }))
+    (h, i) => readVersion(testEvent({ headers: h, params: { id: i.versionId } })),
+    READ
+  ],
+  [
+    'DELETE /api/ui/projects/:id/lock',
+    (h, i) => forceUnlock(testEvent({ headers: h, params: { id: i.projectId } })),
+    EDIT
+  ],
+  [
+    'POST /api/admin/rollback',
+    (h, i) =>
+      rollback(testEvent({ headers: h, body: { projectId: i.projectId, versionId: 'none' } })),
+    OWN
   ],
   [
     'GET /api/ui/projects/:id/environments',
-    (h) => listEnvironments(testEvent({ headers: h, params: { id: 'p1' } }))
+    (h, i) => listEnvironments(testEvent({ headers: h, params: { id: i.projectId } })),
+    READ
+  ],
+  [
+    'POST /api/ui/projects/:id/environments',
+    (h, i) => createEnvironment(testEvent({ headers: h, params: { id: i.projectId }, body: {} })),
+    OWN
+  ],
+  [
+    'DELETE /api/ui/environments/:id',
+    (h) => deleteEnvironment(testEvent({ headers: h, params: { id: 'no-such-env' } })),
+    UNKNOWN_ENV
   ],
   [
     'GET /api/ui/environments/:id/variables',
-    (h) => listVariables(testEvent({ headers: h, params: { id: 'e1' } }))
+    (h, i) => listVariables(testEvent({ headers: h, params: { id: i.envId } })),
+    READ
   ],
-  ['GET /api/ui/github', (h) => githubStatus(testEvent({ headers: h }))]
+  [
+    'PUT /api/ui/environments/:id/variables/:name',
+    (h, i) => putVariable(testEvent({ headers: h, params: { id: i.envId, name: 'x' }, body: {} })),
+    EDIT
+  ],
+  [
+    'DELETE /api/ui/environments/:id/variables/:name',
+    (h, i) => deleteVariable(testEvent({ headers: h, params: { id: i.envId, name: 'x' } })),
+    EDIT
+  ],
+  [
+    'POST /api/ui/environments/:id/variables/import',
+    (h, i) => importVariables(testEvent({ headers: h, params: { id: i.envId }, body: {} })),
+    EDIT
+  ],
+  [
+    'PUT /api/ui/environments/:id/link',
+    (h, i) => putLink(testEvent({ headers: h, params: { id: i.envId }, body: {} })),
+    OWN
+  ],
+  [
+    'DELETE /api/ui/environments/:id/link',
+    (h, i) => deleteLink(testEvent({ headers: h, params: { id: i.envId } })),
+    OWN
+  ],
+  [
+    'POST /api/ui/environments/:id/sync',
+    (h, i) => syncNow(testEvent({ headers: h, params: { id: i.envId } })),
+    EDIT
+  ],
+  [
+    'GET /api/ui/github/installations/:id/repositories',
+    (h) => listRepos(testEvent({ headers: h, params: { id: '1' } })),
+    OWNER_SOMEWHERE
+  ],
+  ['GET /api/github/install', (h) => githubInstall(testEvent({ headers: h })), ADMIN],
+  ['GET /api/github/setup', (h) => githubSetup(testEvent({ headers: h })), ADMIN],
+  ['GET /api/ui/github', (h) => githubStatus(testEvent({ headers: h })), ANY_SESSION],
+  ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h })), ADMIN],
+  // Token routes stay admin-only until the token task moves them to project owners.
+  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h })), ADMIN],
+  ['POST /api/ui/tokens', (h) => createToken(testEvent({ headers: h, body: {} })), ADMIN],
+  [
+    'DELETE /api/ui/tokens/:id',
+    (h) => deleteToken(testEvent({ headers: h, params: { id: 'k1' } })),
+    ADMIN
+  ]
 ]
 
-describe.each(READ_ROUTES)('%s', (_name, call) => {
-  it('lets a member through', async () => {
-    expect(await statusOf(call(member))).not.toBe(403)
-  })
+describe.each(ROUTES)('%s', (_name, call, expected) => {
+  it.each(Object.entries(expected) as Array<[Actor, Outcome]>)(
+    '%s -> %s',
+    async (actor, outcome) => {
+      expect(await outcomeOf(call(headers[actor], ids))).toBe(outcome)
+    }
+  )
+})
 
-  it('still refuses an anonymous caller with 401', async () => {
-    await expect(call({})).rejects.toMatchObject({ statusCode: 401 })
+describe('non-member 404', () => {
+  it('is byte-identical to an unknown project id', async () => {
+    const stranger = await errorOf(
+      listVersions(testEvent({ headers: headers.stranger, params: { id: ids.projectId } }))
+    )
+    const unknown = await errorOf(
+      listVersions(testEvent({ headers: headers.viewer, params: { id: 'nope' } }))
+    )
+    expect(stranger).toEqual({ statusCode: 404, statusMessage: NOT_FOUND })
+    expect(unknown).toEqual(stranger)
+  })
+})
+
+describe('cross-project ids', () => {
+  it('a viewer of project A gets 404 for an environment in project B', async () => {
+    const other = await seedProject(ORG, 'other')
+    const otherEnv = ulid()
+    await db().insert(environment).values({ id: otherEnv, projectId: other, slug: 'dev' })
+    expect(
+      await outcomeOf(
+        listVariables(testEvent({ headers: headers.viewer, params: { id: otherEnv } }))
+      )
+    ).toBe(404)
+  })
+})
+
+describe('removed member', () => {
+  it('gets 404 on every project route after removal', async () => {
+    const stamp = Date.now()
+    const u = await provisionUser(`rr-removed-${stamp}@example.com`, PASSWORD)
+    await setRole(u.id, 'member')
+    await grantProjectRole(ids.projectId, u.id, 'viewer')
+    const h = Object.fromEntries((await signInHeaders(u.email, PASSWORD)).entries())
+    await db().delete(projectMember).where(eq(projectMember.userId, u.id))
+    for (const [, call, expected] of ROUTES) {
+      if (expected.stranger !== 404) continue
+      expect(await outcomeOf(call(h, ids))).toBe(404)
+    }
   })
 })
 
 /**
- * The status a call refused with, or undefined when it did not refuse. Returning
- * the status rather than asserting inside a `catch` keeps every expectation
- * unconditional — a `catch` that never runs is a test that never asserted.
+ * 404 means the guard's NOT_FOUND specifically. A route's own 404 (a missing
+ * blob, an unknown version) is the route running, which counts as 'pass'.
  */
-async function statusOf(call: Promise<unknown>): Promise<number | undefined> {
+async function outcomeOf(call: Promise<unknown>): Promise<Outcome> {
   try {
     await call
-    return undefined
+    return 'pass'
   } catch (error) {
-    return isApiError(error) ? error.statusCode : undefined
+    if (!isApiError(error)) return 'pass'
+    if (error.statusCode === 401 || error.statusCode === 403) return error.statusCode
+    if (error.statusCode === 404 && error.statusMessage === NOT_FOUND) return 404
+    return 'pass'
+  }
+}
+
+async function errorOf(
+  call: Promise<unknown>
+): Promise<{ statusCode?: number; statusMessage?: string }> {
+  try {
+    await call
+    return {}
+  } catch (error) {
+    return isApiError(error)
+      ? { statusCode: error.statusCode, statusMessage: error.statusMessage }
+      : {}
   }
 }
