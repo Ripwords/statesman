@@ -45,7 +45,10 @@ describe('listAccounts', () => {
     const accounts = await listAccounts()
     expect(accounts.find((a) => a.id === adminId)?.role).toBe('admin')
     expect(accounts.find((a) => a.id === memberId)?.role).toBe('member')
-    expect(JSON.stringify(accounts)).not.toMatch(/password|hash|\$2[aby]\$|scrypt/i)
+    // Field names, not the serialised list: random account ids can spell "hash".
+    for (const account of accounts) {
+      expect(Object.keys(account).toSorted()).toEqual(['createdAt', 'email', 'id', 'name', 'role'])
+    }
   })
 
   it('reports a NULL role as member rather than leaking the null onward', async () => {
