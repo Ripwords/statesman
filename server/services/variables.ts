@@ -134,7 +134,8 @@ export async function setVariable(args: {
           'A sensitive variable can only be made non-sensitive together with a new value.'
       })
     }
-    await db()
+    // The pre-check above can be stale: guard the downgrade in the UPDATE itself.
+    const updated = await db()
       .update(variable)
       .set({
         sensitive: input.sensitive,
@@ -142,7 +143,29 @@ export async function setVariable(args: {
         updatedBy: userId,
         updatedAt: new Date()
       })
-      .where(and(eq(variable.environmentId, environmentId), eq(variable.name, name)))
+      .where(
+        and(
+          eq(variable.environmentId, environmentId),
+          eq(variable.name, name),
+          input.sensitive ? undefined : eq(variable.sensitive, false)
+        )
+      )
+      .returning()
+    if (updated.length === 0 && !input.sensitive) {
+      const now = (
+        await db()
+          .select({ sensitive: variable.sensitive })
+          .from(variable)
+          .where(and(eq(variable.environmentId, environmentId), eq(variable.name, name)))
+      )[0]
+      if (now?.sensitive) {
+        throw createError({
+          statusCode: 400,
+          statusMessage:
+            'A sensitive variable can only be made non-sensitive together with a new value.'
+        })
+      }
+    }
     return 'updated'
   }
 

@@ -2,7 +2,7 @@ import { isApiError } from './../ui/nitro-globals'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { variable } from '../../server/db/schema'
+import { environment, variable } from '../../server/db/schema'
 import { resetDb, seedProject, seedUser } from '../protocol/helpers'
 import {
   createEnvironment,
@@ -187,5 +187,39 @@ describe('plaintext canary', () => {
     const err = await set('pw', { sensitive: false }).catch((e: unknown) => e)
     expect(isApiError(err)).toBe(true)
     expect(JSON.stringify(err, Object.getOwnPropertyNames(err))).not.toContain('error-canary')
+  })
+})
+
+describe('downgrade race and cross-environment ciphertext', () => {
+  it('refuses a metadata-only downgrade of a row that has become sensitive', async () => {
+    await set('pw', { value: 'v', sensitive: false })
+    await db()
+      .update(variable)
+      .set({ sensitive: true })
+      .where(and(eq(variable.environmentId, envId), eq(variable.name, 'pw')))
+    await expect(set('pw', { sensitive: false })).rejects.toMatchObject({ statusCode: 400 })
+    const [row] = await db().select().from(variable).where(eq(variable.environmentId, envId))
+    expect(row?.sensitive).toBe(true)
+  })
+
+  it('refuses to open a sealed value copied from another environment', async () => {
+    await set('a', { value: 'env-a-secret', sensitive: true })
+    const [src] = await db().select().from(variable).where(eq(variable.environmentId, envId))
+    const [projectRow] = await db()
+      .select({ projectId: environment.projectId })
+      .from(environment)
+      .where(eq(environment.id, envId))
+    const other = await createEnvironment(projectRow?.projectId ?? '', 'staging')
+    await db()
+      .insert(variable)
+      .values({
+        id: 'copied-row',
+        environmentId: other.id,
+        name: 'a',
+        valueSealed: src?.valueSealed ?? '',
+        sensitive: false
+      })
+    await expect(readDeliveryValues(other.id)).rejects.toThrow()
+    await expect(listStoredForUi(other.id)).rejects.toThrow()
   })
 })
