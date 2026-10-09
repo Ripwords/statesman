@@ -98,3 +98,106 @@ describe('parseTfvars', () => {
     expect(() => hcl.parseTfvars('variable "x" {}\n')).toThrow(HclError)
   })
 })
+
+describe('parseTfvars refuses everything that is not a literal (R14)', () => {
+  const attempt = (source: string) => () => hcl.parseTfvars(source)
+  const hclError = (line = 1) => expect.objectContaining({ name: 'HclError', line })
+
+  it.each([
+    ['get_attr on an object', 'a = {x=1}.x\n'],
+    ['index on a tuple', 'a = [1][0]\n'],
+    ['index on a string', 'a = "s"[0]\n'],
+    ['index on a number', 'a = 5[0]\n'],
+    ['attribute splat', 'a = [1].*\n'],
+    ['full splat', 'a = [1][*]\n'],
+    ['nested postfix', 'a = { b = [1,2][1] }\n'],
+    ['logical not', 'a = !true\n'],
+    ['double negation', 'a = - -1\n'],
+    ['negated string', 'a = -"x"\n']
+  ])('refuses %s', (_label, source) => expect(attempt(source)).toThrow(hclError()))
+
+  it.each([
+    ['an if directive', 'a = <<EOT\n%{ if true }x%{ endif }\nEOT\n'],
+    ['a for directive', 'a = <<EOT\n%{ for i in [1] }${i}%{ endfor }\nEOT\n'],
+    ['an interpolation', 'a = <<EOT\nhello ${var.x}\nEOT\n']
+  ])('refuses a heredoc with %s', (_label, source) => expect(attempt(source)).toThrow(hclError(2)))
+
+  it('names quoted templates accurately', () => {
+    expect(() => hcl.parseTfvars('a = "${var.x}"\n')).toThrow(/templates are not allowed/)
+  })
+
+  it('unescapes $${ and %%{ in strings and heredocs', () => {
+    expect(hcl.parseTfvars('a = "$${x} %%{y}"\n')).toEqual({ a: '${x} %{y}' })
+    expect(hcl.parseTfvars('a = <<EOT\n$${x} %%{y}\nEOT\n')).toEqual({ a: '${x} %{y}\n' })
+  })
+
+  it('refuses duplicate keys at the second occurrence', () => {
+    expect(attempt('a = 1\na = 2\n')).toThrow(hclError(2))
+    expect(attempt('a = {\n  x = 1\n  x = 2\n}\n')).toThrow(hclError(3))
+    expect(attempt('a = { x = 1, "x" = 2 }\n')).toThrow(hclError(1))
+  })
+
+  it('refuses two attributes on one line', () => {
+    expect(attempt('a = 1 b = 2\n')).toThrow(hclError())
+  })
+
+  it('reads negative numbers', () => {
+    expect(hcl.parseTfvars('a = -1\nb = -1.5\n')).toEqual({ a: -1, b: -1.5 })
+  })
+
+  it('stringifies number, bool and null object keys', () => {
+    expect(hcl.parseTfvars('a = { 1 = 2, true = 3, null = 4 }\n')).toEqual({
+      a: { '1': 2, true: 3, null: 4 }
+    })
+  })
+
+  it('refuses exponent numbers (the grammar rejects them)', () => {
+    expect(attempt('a = 1e3\n')).toThrow(hclError())
+  })
+
+  it('refuses integers that lose precision', () => {
+    expect(attempt('a = 12345678901234567890\n')).toThrow(hclError())
+    expect(hcl.parseTfvars('a = 9007199254740991\n')).toEqual({ a: 9007199254740991 })
+  })
+
+  it('refuses nesting beyond the cap with an HclError, not a RangeError', () => {
+    expect(attempt(`a = ${'['.repeat(200)}${']'.repeat(200)}\n`)).toThrow(hclError())
+    expect(attempt(`a = ${'['.repeat(20000)}\n`)).toThrow(hclError())
+  })
+
+  it('does not leak parse trees', () => {
+    let last: unknown
+    for (let i = 0; i < 200; i++) last = hcl.parseTfvars('a = 1\n')
+    expect(last).toEqual({ a: 1 })
+  })
+})
+
+describe('extractVariables, round 1', () => {
+  const extract = (source: string) => hcl.extractVariables(source, 'v.tf')
+
+  it('accepts a bare identifier label', () => {
+    expect(extract('variable foo {}\n').map((v) => v.name)).toEqual(['foo'])
+  })
+
+  it.each([
+    ['no label', 'variable {}\n'],
+    ['two labels', 'variable "a" "b" {}\n']
+  ])('refuses a variable block with %s', (_label, source) => {
+    expect(() => extract(source)).toThrow(expect.objectContaining({ name: 'HclError', line: 1 }))
+  })
+
+  it('converts "true" and "false" strings for sensitive', () => {
+    expect(extract('variable "a" { sensitive = "true" }\n')[0]?.sensitive).toBe(true)
+    expect(extract('variable "a" { sensitive = "false" }\n')[0]?.sensitive).toBe(false)
+  })
+
+  it.each([['"yes"'], ['1'], ['null'], ['var.x']])('refuses sensitive = %s', (value) => {
+    expect(() => extract(`variable "a" {\n  sensitive = ${value}\n}\n`)).toThrow(
+      expect.objectContaining({ name: 'HclError', line: 2 })
+    )
+  })
+
+  it('refuses two attributes on one line inside a block', () => {
+    expect(() => extract('variable "a" { type = string default = 1 }\n')).toThrow(HclError)
+  })
+})

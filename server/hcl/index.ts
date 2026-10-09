@@ -13,10 +13,15 @@ let toolkit: Promise<HclToolkit> | undefined
  */
 export function hcl(): Promise<HclToolkit> {
   toolkit ??= createHclToolkit(async (name) => {
-    const raw = await useStorage('assets:server').getItemRaw<Uint8Array | ArrayBuffer>(
+    const raw = await useStorage('assets:server').getItemRaw<Uint8Array | ArrayBuffer | string>(
       `wasm:${name}`
     )
     if (!raw) throw new Error(`parser asset missing: server/assets/wasm/${name}`)
+    if (typeof raw === 'string') {
+      throw new Error(
+        `parser asset server/assets/wasm/${name} came back as text; expected raw bytes`
+      )
+    }
     return raw instanceof Uint8Array
       ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
       : new Uint8Array(raw)
