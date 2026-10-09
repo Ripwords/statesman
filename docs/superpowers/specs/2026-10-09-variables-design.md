@@ -1,7 +1,7 @@
 # statesman variables — Design Spec
 
 **Date:** 2026-10-09
-**Status:** Draft, awaiting review.
+**Status:** Approved 2026-10-09. Plan: `docs/superpowers/plans/2026-10-09-variables.md`.
 
 Encrypted storage and delivery of Terraform input variables (the contents of a
 `.tfvars` file), per project and environment, with optional GitHub App
@@ -88,7 +88,7 @@ variable
   id            text pk                          // ULID
   environmentId text  → environment.id  on delete cascade
   name          text                             // Terraform identifier
-  valueSealed   bytea                            // seal(key, JSON, aad)
+  valueSealed   text                             // base64 of seal(key, JSON, aad)
   sensitive     boolean   not null default true
   description   text
   updatedBy     text  → user.id  on delete set null
@@ -110,21 +110,31 @@ repository_link
   lastSyncedAt   timestamp
   lastSyncedSha  text
   lastSyncError  text                            // null when last sync succeeded
-
-declared_variable                                 // replaced wholesale per sync
-  environmentId  text → repository_link.environmentId on delete cascade
-  name           text
-  typeExpr       text                            // e.g. "list(string)", null when untyped
-  hasDefault     boolean
-  sensitive      boolean
-  description    text
-  file           text
-  line           integer
-  pk (environmentId, name)
+  declared       jsonb                           // DeclaredVariable[] from the last good sync, null before one
 ```
 
-`bytea` needs a Drizzle `customType`. It is the first binary column in the
-schema; ciphertext so far has lived in the blob store.
+```ts
+type DeclaredVariable = {
+  name: string
+  typeExpr: string | null   // source text, e.g. "list(string)"
+  hasDefault: boolean
+  sensitive: boolean
+  description: string | null
+  file: string
+  line: number
+}
+```
+
+`valueSealed` is base64 `text`, not `bytea`. Neon's HTTP driver sends
+parameters as JSON and returns `bytea` as a `\x…` hex string, so a binary
+column would need driver-specific conversion in both directions. Base64 costs
+a third more space on values capped at 64 KiB.
+
+**Why `declared` is a column and not a table:** Neon's HTTP driver has no
+interactive transactions (`server/db/client.ts`), and a sync must replace the
+declared set and its sync metadata together or not at all. One `UPDATE` of one
+row is atomic on both drivers. The declared set is only ever read whole, for
+one environment, so a table would buy nothing.
 
 ### Validation
 
@@ -147,7 +157,8 @@ Same key and algorithm as state (base §8). Variable values are sealed
 individually.
 
 `seal` and `open` in `server/utils/crypto.ts` gain an optional `aad` argument,
-passed to `setAAD`. Variables always pass `variable:<variable.id>`. State
+passed to `setAAD`. Variables always pass
+`variable:<environmentId>:<name>`. State
 callers pass nothing, so the state wire format and every existing blob are
 unchanged.
 
@@ -155,9 +166,13 @@ unchanged.
 `state_version` row, so the row-to-ciphertext binding is by reference. A
 variable's ciphertext sits inline in its own row. Without AAD, anyone who can
 write to the database can copy the ciphertext of `prod/db_password` into
-`dev/db_password`, and it decrypts cleanly. With AAD bound to the row id,
-`open` throws. The binding is to the id, not the name, so a rename does not
-need a re-seal.
+`dev/db_password`, and it decrypts cleanly. With AAD bound to the
+environment and name, `open` throws.
+
+The binding is to `(environmentId, name)`, not the row id, because writes are
+an upsert on that pair: an `INSERT … ON CONFLICT DO UPDATE` keeps the existing
+row's id, so a value sealed against a freshly generated id would never open.
+There is no rename; changing a name is delete and create, which re-seals.
 
 Plaintext values never touch the blob store, the logs, or the audit log.
 
@@ -338,9 +353,11 @@ repository.
 ### Installing
 
 1. An admin clicks **Connect GitHub**. statesman stores a random `state` value
-   in the session and redirects to the install URL with it.
+   in a short-lived `httpOnly`, `SameSite=Lax` cookie scoped to `/api/github`
+   (Better Auth sessions carry no custom data) and redirects to the install
+   URL with it.
 2. GitHub redirects back to `/api/github/setup?installation_id=…&state=…`.
-3. statesman checks that `state` matches the session, then calls
+3. statesman checks that `state` matches the cookie, then calls
    `GET /app/installations/:id` with the app JWT to confirm the installation
    exists and belongs to this app. Only then does it insert
    `github_installation`. A forged `installation_id` fails this check.
@@ -353,19 +370,23 @@ directory, then save. Saving runs a sync immediately.
 
 ### Sync
 
-1. Mint an installation token. Tokens are not stored. `@octokit/app` caches
-   them in memory for their one-hour life.
+1. Mint an installation token: an RS256 app JWT signed with `node:crypto`,
+   exchanged at `POST /app/installations/:id/access_tokens`. Tokens are not
+   stored; a module-level map caches each one until five minutes before it
+   expires. This is about forty lines over `fetch`, chosen over `@octokit/app`
+   so the client takes an injectable `fetch` and tests need no HTTP mocking
+   library.
 2. List the directory at `ref` with the contents API. Fetch every `*.tf` file
    **directly in that directory**. Subdirectories are not read: they are child
    modules, and their variables are not inputs a `.tfvars` file can set.
 3. Parse each file and collect the `variable` blocks: name, `type` expression
    as source text, presence of `default`, `sensitive`, `description`, and
    location.
-4. In one transaction, replace that environment's `declared_variable` rows and
-   update `lastSyncedAt`, `lastSyncedSha` and `lastSyncError = null`.
+4. In one `UPDATE` of the `repository_link` row, write `declared`,
+   `lastSyncedAt`, `lastSyncedSha` and `lastSyncError = null`.
 
-A failure at any step writes `lastSyncError` and leaves the previous
-`declared_variable` rows in place. A failed sync does not mark every variable
+A failure at any step writes only `lastSyncError` and leaves the previous
+`declared` value in place. A failed sync does not mark every variable
 **Undeclared**.
 
 A file that fails to parse fails the whole sync. A partial declared set would
@@ -375,9 +396,14 @@ report variables as missing or undeclared on the strength of a parse error.
 and Vercel). It is chosen over `@cdktf/hcl2json` because CDKTF is no longer
 maintained, and over a hand-written parser because heredocs and nested blocks
 make "find the `variable` blocks" harder than it looks. The implementation
-plan's first task is a spike that confirms the grammar parses the e2e fixture
-and a set of real-world `variables.tf` files in a Vercel function. If the spike
-fails, this section is revised before anything else is built.
+plan probed `web-tree-sitter` 0.27.1 with `@tree-sitter-grammars/tree-sitter-hcl`
+1.2.0 on Node: `variable` blocks, heredocs, nested `type` expressions,
+`validation` blocks and literal `.tfvars` all parse, and a syntax error sets
+`rootNode.hasError`. The two `.wasm` files are committed under
+`server/assets/wasm/` and loaded as Nitro server assets, which every preset
+bundles; the plan's Task 0 proves they reach a Vercel build before anything
+depends on them. The unscoped npm package `tree-sitter-hcl` is a security
+placeholder and must never be installed.
 
 ### Triggers
 
@@ -413,7 +439,7 @@ and the repository panel are simply absent.
 | `GET /api/ui/environments/:id/variables` | session | Merged table rows. Sensitive values omitted |
 | `PUT /api/ui/environments/:id/variables/:name` | admin | Create or replace |
 | `DELETE /api/ui/environments/:id/variables/:name` | admin | Delete |
-| `POST /api/ui/environments/:id/variables/import` | admin | `.tfvars.json` import; `?dryRun=1` for preview |
+| `POST /api/ui/environments/:id/variables/import` | admin | `.tfvars.json` import; `dryRun: true` in the body for preview |
 | `GET /api/github/install` | admin | Redirect to GitHub |
 | `GET /api/github/setup` | admin | Install callback |
 | `GET /api/ui/github/installations/:id/repositories` | admin | Repo picker |
@@ -457,6 +483,8 @@ Tests come first, following the existing pattern (base §13).
   - Row-swap: copying `valueSealed` between two rows makes delivery fail with
     500 rather than return the wrong secret.
   - Sync failure keeps the previous declared set.
+  - Upserting an existing variable replaces its value and the new value
+    opens; this pins the AAD binding against the upsert path.
 - **End to end:** the existing fixture (`tests/e2e/fixture/main.tf`) declares
   `variable "value"`. The scenario stores `value` in statesman, curls it to
   `statesman.auto.tfvars.json`, runs `terraform apply`, and asserts on the
@@ -479,9 +507,10 @@ plan is written.
 3. **No value history** (§1). History would mean keeping old secrets, encrypted,
    indefinitely.
 4. **Delivery reads are audited** (§5), unlike state reads.
-5. **HCL `.tfvars` import** depends on the parser spike (§9). If the
-   tree-sitter grammar handles `.tfvars` cleanly, import accepts both formats.
-   Otherwise import is JSON-only in v1.
+5. **HCL `.tfvars` import** is supported for literal-only files: the parser
+   probe (§9) showed `.tfvars` parses as a body of attributes. Any expression
+   (interpolation, function call, reference, operator) is refused with its
+   line number, never stored as text.
 6. **No feature flag for variables.** The tab is always present. Only GitHub is
    gated, by its configuration.
 
