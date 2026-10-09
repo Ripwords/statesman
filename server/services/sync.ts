@@ -1,6 +1,8 @@
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client'
 import { githubInstallation, repositoryLink } from '../db/schema'
+import { GitHubError, type GitHubClient } from '../github/client'
+import { HclError, type HclToolkit } from '../hcl/toolkit'
 import type { DeclaredVariable } from '../../shared/schemas/variable'
 import type { LinkSummary } from '../utils/variable-status'
 
@@ -85,4 +87,90 @@ export async function linkSummary(
     },
     declared: row.declared
   }
+}
+
+export type SyncDeps = { client: GitHubClient; hcl: HclToolkit }
+export type SyncResult = { ok: true; count: number; sha: string } | { ok: false; error: string }
+
+/**
+ * Reads the linked directory at one commit and replaces the declared set
+ * (variables spec §9). Failures are RECORDED, not thrown: the caller is a
+ * webhook or a button, and either way the answer belongs on the link row where
+ * the dashboard shows it. A failure leaves the previous declared set alone,
+ * so a bad push cannot mark every variable Undeclared.
+ */
+export async function syncEnvironment(environmentId: string, deps: SyncDeps): Promise<SyncResult> {
+  const [link] = await db()
+    .select()
+    .from(repositoryLink)
+    .where(eq(repositoryLink.environmentId, environmentId))
+  if (!link) return { ok: false, error: 'This environment is not linked to a repository.' }
+
+  try {
+    // Every read is pinned to one sha, so a push landing mid-sync cannot mix
+    // two commits' files into one declared set.
+    const sha = await deps.client.resolveCommit(link.installationId, link.repoFullName, link.ref)
+    const paths = await deps.client.listTfFiles(
+      link.installationId,
+      link.repoFullName,
+      link.directory,
+      sha
+    )
+    if (paths.length === 0) {
+      throw new GitHubError(
+        `No .tf files in ${link.directory || 'the repository root'} at ${link.ref}.`,
+        404
+      )
+    }
+    const declared: DeclaredVariable[] = []
+    for (const path of paths) {
+      const source = await deps.client.readFile(link.installationId, link.repoFullName, path, sha)
+      declared.push(...deps.hcl.extractVariables(source, path))
+    }
+    await db()
+      .update(repositoryLink)
+      .set({ declared, lastSyncedAt: new Date(), lastSyncedSha: sha, lastSyncError: null })
+      .where(eq(repositoryLink.environmentId, environmentId))
+    return { ok: true, count: declared.length, sha }
+  } catch (error) {
+    if (!(error instanceof GitHubError) && !(error instanceof HclError)) throw error
+    const message = error.message
+    await db()
+      .update(repositoryLink)
+      .set({ lastSyncError: message })
+      .where(eq(repositoryLink.environmentId, environmentId))
+    return { ok: false, error: message }
+  }
+}
+
+export async function linksForPush(repoId: number, ref: string): Promise<string[]> {
+  const rows = await db()
+    .select({ environmentId: repositoryLink.environmentId })
+    .from(repositoryLink)
+    .where(and(eq(repositoryLink.repoId, repoId), eq(repositoryLink.ref, ref)))
+  return rows.map((r) => r.environmentId)
+}
+
+/** Not deleted: an admin may grant the repository back, and the link should resume. */
+export async function markRepositoriesRevoked(
+  installationId: number,
+  repoIds: number[]
+): Promise<void> {
+  if (repoIds.length === 0) return
+  await db()
+    .update(repositoryLink)
+    .set({ lastSyncError: 'The GitHub App no longer has access to this repository.' })
+    .where(
+      and(
+        eq(repositoryLink.installationId, installationId),
+        inArray(repositoryLink.repoId, repoIds)
+      )
+    )
+}
+
+export async function renameRepository(repoId: number, fullName: string): Promise<void> {
+  await db()
+    .update(repositoryLink)
+    .set({ repoFullName: fullName })
+    .where(eq(repositoryLink.repoId, repoId))
 }
