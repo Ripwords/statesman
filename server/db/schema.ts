@@ -1,3 +1,4 @@
+import type { DeclaredVariable } from '../../shared/schemas/variable'
 import {
   pgTable,
   text,
@@ -205,6 +206,70 @@ export const auditLog = pgTable(
   (t) => [index('audit_log_project_at_idx').on(t.projectId, t.at)]
 )
 
+// --- Variables (variables spec §3) ------------------------------------------
+
+export const environment = pgTable(
+  'environment',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => project.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow()
+  },
+  (t) => [uniqueIndex('environment_project_slug_uq').on(t.projectId, t.slug)]
+)
+
+// `valueSealed` is base64 text, not bytea: Neon's HTTP driver sends parameters
+// as JSON and returns bytea as a `\x…` string, so a binary column would need
+// conversion per driver in both directions (variables spec §3).
+export const variable = pgTable(
+  'variable',
+  {
+    id: text('id').primaryKey(),
+    environmentId: text('environment_id')
+      .notNull()
+      .references(() => environment.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    valueSealed: text('value_sealed').notNull(),
+    sensitive: boolean('sensitive').notNull().default(true),
+    description: text('description'),
+    updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
+    updatedAt: timestamp('updated_at').notNull().defaultNow()
+  },
+  (t) => [uniqueIndex('variable_environment_name_uq').on(t.environmentId, t.name)]
+)
+
+export const githubInstallation = pgTable('github_installation', {
+  installationId: bigint('installation_id', { mode: 'number' }).primaryKey(),
+  accountLogin: text('account_login').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+// `declared` is a column, not a table, so a sync replaces it and its metadata
+// in one UPDATE — Neon HTTP has no transactions (variables spec §3).
+export const repositoryLink = pgTable(
+  'repository_link',
+  {
+    environmentId: text('environment_id')
+      .primaryKey()
+      .references(() => environment.id, { onDelete: 'cascade' }),
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallation.installationId, { onDelete: 'cascade' }),
+    repoId: bigint('repo_id', { mode: 'number' }).notNull(),
+    repoFullName: text('repo_full_name').notNull(),
+    ref: text('ref').notNull(),
+    directory: text('directory').notNull().default(''),
+    lastSyncedAt: timestamp('last_synced_at'),
+    lastSyncedSha: text('last_synced_sha'),
+    lastSyncError: text('last_sync_error'),
+    declared: jsonb('declared').$type<DeclaredVariable[]>()
+  },
+  (t) => [index('repository_link_repo_ref_idx').on(t.repoId, t.ref)]
+)
+
 export const schema = {
   user,
   session,
@@ -216,5 +281,9 @@ export const schema = {
   stateVersion,
   projectState,
   stateLock,
-  auditLog
+  auditLog,
+  environment,
+  variable,
+  githubInstallation,
+  repositoryLink
 }

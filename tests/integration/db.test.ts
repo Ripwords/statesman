@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { organization, project } from '../../server/db/schema'
+import { environment, organization, project, variable } from '../../server/db/schema'
+import { resetDb, seedProject } from '../protocol/helpers'
 
 // Vitest runs test FILES in parallel against one database. An unscoped
 // `delete(project)` here truncated whatever another suite was mid-way through,
@@ -49,5 +50,51 @@ describe('database', () => {
       .from(project)
       .where(and(eq(project.orgId, otherOrgId), eq(project.slug, 'prod')))
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('variables tables', () => {
+  const ORG = 'db-variables'
+
+  beforeEach(async () => {
+    await resetDb(ORG)
+  })
+
+  it('cascades environment and variables when the project goes', async () => {
+    const projectId = await seedProject(ORG, 'p')
+    await db().insert(environment).values({ id: 'env-db-1', projectId, slug: 'dev' })
+    await db().insert(variable).values({
+      id: 'var-db-1',
+      environmentId: 'env-db-1',
+      name: 'x',
+      valueSealed: 'AAAA'
+    })
+    await resetDb(ORG)
+    const left = await db().select().from(variable).where(eq(variable.id, 'var-db-1'))
+    expect(left).toHaveLength(0)
+  })
+
+  it('refuses two variables with one name in one environment', async () => {
+    const projectId = await seedProject(ORG, 'p')
+    await db().insert(environment).values({ id: 'env-db-2', projectId, slug: 'dev' })
+    const row = { environmentId: 'env-db-2', name: 'x', valueSealed: 'AAAA' }
+    await db()
+      .insert(variable)
+      .values({ id: 'var-db-2', ...row })
+    await expect(
+      db()
+        .insert(variable)
+        .values({ id: 'var-db-3', ...row })
+    ).rejects.toThrow()
+  })
+
+  it('defaults sensitive to true', async () => {
+    const projectId = await seedProject(ORG, 'p')
+    await db().insert(environment).values({ id: 'env-db-3', projectId, slug: 'dev' })
+    await db()
+      .insert(variable)
+      .values({ id: 'var-db-4', environmentId: 'env-db-3', name: 'y', valueSealed: 'AAAA' })
+    const [row] = await db().select().from(variable).where(eq(variable.id, 'var-db-4'))
+    expect(row?.sensitive).toBe(true)
   })
 })
