@@ -232,8 +232,7 @@ export async function listStoredForUi(environmentId: string): Promise<StoredVari
       description: variable.description,
       valueSealed: variable.valueSealed,
       updatedAt: variable.updatedAt,
-      updatedByName: user.name,
-      updatedByEmail: user.email
+      updatedByName: user.name
     })
     .from(variable)
     .leftJoin(user, eq(variable.updatedBy, user.id))
@@ -245,7 +244,8 @@ export async function listStoredForUi(environmentId: string): Promise<StoredVari
       sensitive: r.sensitive,
       description: r.description,
       updatedAt: r.updatedAt,
-      updatedByName: r.updatedByName || r.updatedByEmail || null
+      // Name only: members can read this list, and an email is more than they need.
+      updatedByName: r.updatedByName || null
     }
     return r.sensitive ? base : { ...base, value: openValue(environmentId, r.name, r.valueSealed) }
   })

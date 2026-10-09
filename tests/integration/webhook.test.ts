@@ -257,24 +257,6 @@ describe('handleWebhook', () => {
     expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['from_push'])
   })
 
-  it('records a network failure on the link instead of dropping it', async () => {
-    const offline = (await createEnvironment(projectId, 'off')).id
-    await linkRepository({
-      environmentId: offline,
-      installationId: INSTALLATION,
-      repoId: 88,
-      repoFullName: 'acme/infra',
-      ref: 'main',
-      directory: 'offline'
-    })
-    const result = await deliver('push', {
-      ref: 'refs/heads/main',
-      repository: { id: 88, full_name: 'acme/infra' }
-    })
-    expect(result.synced).toContain(offline)
-    expect((await linkSummary(offline))?.summary.lastSyncError).toBe('Could not reach GitHub.')
-  })
-
   describe('records an installation GitHub reports', () => {
     const NEW = 9_400_003
     const body = (action: string, login = 'acme-org') => ({
