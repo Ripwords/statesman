@@ -36,7 +36,7 @@ export const variableNameSchema = z
  */
 export const variableValueSchema = z
   .json()
-  .refine((v) => Buffer.byteLength(JSON.stringify(v), 'utf8') <= MAX_VALUE_BYTES, {
+  .refine((v) => new TextEncoder().encode(JSON.stringify(v)).length <= MAX_VALUE_BYTES, {
     message: `must be at most ${MAX_VALUE_BYTES / 1024} KiB once serialised`
   })
 export type JsonValue = z.infer<typeof variableValueSchema>
@@ -60,15 +60,17 @@ const importValuesSchema = z
     message: `at most ${MAX_VARIABLES_PER_ENVIRONMENT} variables per environment`
   })
 
+// Strict on both branches: a body carrying both `values` and `hcl` is ambiguous
+// and must be refused, not silently resolved to one of them.
 export const importVariablesSchema = z.union([
-  z.object({ values: importValuesSchema, dryRun: z.boolean().default(false) }),
-  z.object({ hcl: z.string().max(1_048_576), dryRun: z.boolean().default(false) })
+  z.object({ values: importValuesSchema, dryRun: z.boolean().default(false) }).strict(),
+  z.object({ hcl: z.string().max(1_048_576), dryRun: z.boolean().default(false) }).strict()
 ])
 export type ImportVariablesInput = z.infer<typeof importVariablesSchema>
 
 export const createEnvironmentSchema = z.object({ slug: projectSlug })
 
 /** The associated data every variable is sealed under (variables spec §4). */
-export function variableAad(environmentId: string, name: string): Buffer {
-  return Buffer.from(`variable:${environmentId}:${name}`, 'utf8')
+export function variableAad(environmentId: string, name: string): Uint8Array {
+  return new TextEncoder().encode(`variable:${environmentId}:${name}`)
 }

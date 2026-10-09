@@ -49,6 +49,12 @@ describe('importVariablesSchema', () => {
   it('refuses a bad name inside values', () => {
     expect(importVariablesSchema.safeParse({ values: { '1bad': 1 } }).success).toBe(false)
   })
+  it('refuses a body that carries both values and hcl', () => {
+    expect(importVariablesSchema.safeParse({ values: { a: 1 }, hcl: 'a = 1' }).success).toBe(false)
+    expect(
+      importVariablesSchema.safeParse({ values: { a: 1 }, hcl: 'a = 1', dryRun: true }).success
+    ).toBe(false)
+  })
   it('refuses more than 500 values', () => {
     const values = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`v${i}`, i]))
     expect(importVariablesSchema.safeParse({ values }).success).toBe(false)
@@ -57,6 +63,11 @@ describe('importVariablesSchema', () => {
 
 describe('variableAad', () => {
   it('binds environment and name', () => {
-    expect(variableAad('e1', 'x').toString('utf8')).toBe('variable:e1:x')
+    expect(new TextDecoder().decode(variableAad('e1', 'x'))).toBe('variable:e1:x')
+  })
+  it('returns bytes rather than a Node Buffer, so shared/ stays browser-safe', () => {
+    const aad = variableAad('e1', 'x')
+    expect(aad).toBeInstanceOf(Uint8Array)
+    expect(Object.getPrototypeOf(aad)).toBe(Uint8Array.prototype)
   })
 })

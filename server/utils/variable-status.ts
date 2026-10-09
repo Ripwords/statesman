@@ -61,7 +61,7 @@ export function mergeVariables(
       status,
       stored: s !== undefined,
       sensitive: s?.sensitive ?? d?.sensitive ?? true,
-      description: s?.description ?? d?.description ?? null,
+      description: s?.description || d?.description || null,
       updatedAt: s ? s.updatedAt.toISOString() : null,
       updatedBy: s?.updatedBy ?? null,
       declared: d
@@ -72,6 +72,7 @@ export function mergeVariables(
 
   return rows.toSorted((a, b) => {
     const rank = (r: VariableRow) => (r.status ? ORDER[r.status] : 1)
-    return rank(a) - rank(b) || a.name.localeCompare(b.name)
+    const byName = a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+    return rank(a) - rank(b) || byName
   })
 }

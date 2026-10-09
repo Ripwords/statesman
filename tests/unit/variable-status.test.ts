@@ -72,4 +72,47 @@ describe('mergeVariables', () => {
     const rows = mergeVariables([stored('a', { sensitive: false, value: 3 })], null)
     expect(rows[0]?.value).toBe(3)
   })
+
+  it('falls back to the declared description when the stored one is empty', () => {
+    const rows = mergeVariables(
+      [stored('a', { description: '' })],
+      [declared('a', { description: 'repo' })]
+    )
+    expect(rows[0]?.description).toBe('repo')
+  })
+
+  it('sorts by code point, so uppercase precedes lowercase', () => {
+    const rows = mergeVariables([stored('a'), stored('B')], [declared('a'), declared('B')])
+    expect(rows.map((r) => r.name)).toEqual(['B', 'a'])
+  })
+
+  it('keeps missing rows first when sorting by code point', () => {
+    const rows = mergeVariables([stored('a')], [declared('a'), declared('Z')])
+    expect(rows.map((r) => r.name)).toEqual(['Z', 'a'])
+  })
+
+  it('gives a stored row a non-null status when the declared list is empty', () => {
+    const rows = mergeVariables([stored('a')], [])
+    expect(rows[0]?.status).toBe('undeclared')
+  })
+
+  it('marks a declared-only row as not stored, with no updatedAt', () => {
+    const rows = mergeVariables([], [declared('need')])
+    expect(rows[0]).toMatchObject({
+      name: 'need',
+      status: 'missing',
+      stored: false,
+      updatedAt: null,
+      updatedBy: null
+    })
+  })
+
+  it('uses the stored sensitive flag over the declared one', () => {
+    const rows = mergeVariables(
+      [stored('a', { sensitive: false, value: 1 })],
+      [declared('a', { sensitive: true })]
+    )
+    expect(rows[0]?.sensitive).toBe(false)
+    expect(rows[0]?.value).toBe(1)
+  })
 })
