@@ -3,8 +3,13 @@ import { statusMessageOf } from '~/utils/status-message'
 
 type Target = { userId: string; email: string; role: string }
 
-const props = defineProps<{ projectId: string; member: Target | null; lastOwner: boolean }>()
-const emit = defineEmits<{ removed: []; close: [] }>()
+const props = defineProps<{
+  open: boolean
+  projectId: string
+  member: Target | null
+  lastOwner: boolean
+}>()
+const emit = defineEmits<{ removed: []; 'update:open': [value: boolean] }>()
 
 const pending = ref(false)
 const failure = ref<string | null>(null)
@@ -18,7 +23,7 @@ async function remove() {
       method: 'DELETE'
     })
     emit('removed')
-    emit('close')
+    emit('update:open', false)
   } catch (error) {
     failure.value = statusMessageOf(
       error,
@@ -32,14 +37,14 @@ async function remove() {
 
 <template>
   <UModal
-    :open="member !== null"
+    :open="open"
     title="Remove This Member?"
     :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
     @update:open="
       (value) => {
         if (!value) {
           failure = null
-          emit('close')
+          emit('update:open', false)
         }
       }
     "
@@ -70,7 +75,12 @@ async function remove() {
     </template>
     <template #footer>
       <div class="flex w-full justify-end gap-2">
-        <UButton color="neutral" variant="ghost" label="Cancel" @click="emit('close')" />
+        <UButton
+          color="neutral"
+          variant="ghost"
+          label="Cancel"
+          @click="emit('update:open', false)"
+        />
         <UButton
           color="error"
           :loading="pending"

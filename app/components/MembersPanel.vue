@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import { statusMessageOf } from '~/utils/status-message'
+import { leavesNoOwner } from '~/utils/last-owner'
 import type { EffectiveRole } from '~~/shared/project-permissions'
 import type { ProjectRole } from '~~/shared/schemas/project-role'
 
 const props = defineProps<{ projectId: string; role: EffectiveRole | null | undefined }>()
+// The caller's own role came from the project list; after they change it, the
+// page reloads that list so controls they no longer hold disappear.
+const emit = defineEmits<{ 'self-changed': [] }>()
+
+const { user: me } = useAuth()
 
 const { can } = useProjectRole(toRef(props, 'role'))
 const canManage = computed(() => can('member:manage'))
@@ -38,12 +44,47 @@ const columns = computed<TableColumn<Member>[]>(() => [
 ])
 
 const adding = ref(false)
+// Each modal's member outlives its `open` flag, so the title, body and
+// warning stay put through the close animation instead of blanking mid-fade.
 const removing = ref<Member | null>(null)
+const removeOpen = ref(false)
+const demoting = ref<{ member: Member; next: ProjectRole } | null>(null)
+const demoteOpen = ref(false)
 const busyId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
-async function changeRole(row: Member, next: ProjectRole) {
+function isMe(row: Member): boolean {
+  return row.userId === me.value?.id
+}
+
+function pickRole(row: Member, next: ProjectRole) {
   if (row.role === next) return
+  if (leavesNoOwner(row.role, next, ownerCount.value)) {
+    // Nothing is sent yet; the select is bound to the server's role, so it
+    // shows that until the change is confirmed, and still shows it on Cancel.
+    demoting.value = { member: row, next }
+    demoteOpen.value = true
+    return
+  }
+  void changeRole(row, next)
+}
+
+function confirmDemotion() {
+  demoteOpen.value = false
+  if (demoting.value) void changeRole(demoting.value.member, demoting.value.next)
+}
+
+function confirmRemove(row: Member) {
+  removing.value = row
+  removeOpen.value = true
+}
+
+async function onRemoved() {
+  await refresh()
+  if (removing.value && isMe(removing.value)) emit('self-changed')
+}
+
+async function changeRole(row: Member, next: ProjectRole) {
   busyId.value = row.userId
   actionError.value = null
   try {
@@ -51,6 +92,7 @@ async function changeRole(row: Member, next: ProjectRole) {
       method: 'PATCH',
       body: { role: next }
     })
+    if (isMe(row)) emit('self-changed')
   } catch (error) {
     actionError.value = statusMessageOf(
       error,
@@ -117,7 +159,7 @@ async function changeRole(row: Member, next: ProjectRole) {
           :disabled="busyId === row.original.userId"
           class="w-32"
           :aria-label="`Role for ${row.original.email}`"
-          @update:model-value="(next: ProjectRole) => changeRole(row.original, next)"
+          @update:model-value="(next: ProjectRole) => pickRole(row.original, next)"
         />
         <UBadge
           v-else
@@ -139,7 +181,7 @@ async function changeRole(row: Member, next: ProjectRole) {
             size="xs"
             icon="i-lucide-user-minus"
             :aria-label="`Remove ${row.original.email}`"
-            @click="removing = row.original"
+            @click="confirmRemove(row.original)"
           />
         </div>
       </template>
@@ -147,11 +189,18 @@ async function changeRole(row: Member, next: ProjectRole) {
 
     <MemberAddModal v-model:open="adding" :project-id="projectId" @added="refresh()" />
     <MemberRemoveModal
+      v-model:open="removeOpen"
       :project-id="projectId"
       :member="removing"
       :last-owner="ownerCount === 1 && removing?.role === 'owner'"
-      @removed="refresh()"
-      @close="removing = null"
+      @removed="onRemoved"
+    />
+    <MemberDemoteModal
+      v-model:open="demoteOpen"
+      :member="demoting?.member ?? null"
+      :next="demoting?.next ?? null"
+      :self="demoting !== null && isMe(demoting.member)"
+      @confirm="confirmDemotion"
     />
   </div>
 </template>

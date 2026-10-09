@@ -204,7 +204,12 @@ const bytes = new Intl.NumberFormat(undefined, {
 
       <VariablesPanel v-if="tab === 'variables'" :project-id="current.id" :role="myRole" />
 
-      <MembersPanel v-else-if="tab === 'members'" :project-id="current.id" :role="myRole" />
+      <MembersPanel
+        v-else-if="tab === 'members'"
+        :project-id="current.id"
+        :role="myRole"
+        @self-changed="refreshProjects()"
+      />
 
       <template v-else>
         <!--
