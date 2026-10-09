@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { stateActionSchema, tokenScopeSchema } from '../../../shared/schemas/token'
+import { stateActionSchema, tokenScopeSchema, varActionSchema } from '../../../shared/schemas/token'
 import { auth } from '../../utils/auth'
 import { requireAdmin } from '../../utils/ui-auth'
 
@@ -9,6 +9,7 @@ import { requireAdmin } from '../../utils/ui-auth'
 // instead of crashing the list.
 const metadataSchema = z.object({ scope: tokenScopeSchema })
 const actionsSchema = z.array(stateActionSchema)
+const varActionsSchema = z.array(varActionSchema)
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
     rateLimitMax: key.rateLimitMax,
     rateLimitTimeWindow: key.rateLimitTimeWindow,
     actions: actionsSchema.safeParse(key.permissions?.state ?? []).data ?? [],
+    varActions: varActionsSchema.safeParse(key.permissions?.vars ?? []).data ?? [],
     scope: metadataSchema.safeParse(key.metadata).data?.scope ?? null
   }))
 })

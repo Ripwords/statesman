@@ -3,8 +3,10 @@ import { auth } from './auth'
 import {
   stateActionSchema,
   tokenScopeSchema,
+  varActionSchema,
   type StateAction,
-  type TokenScope
+  type TokenScope,
+  type VarAction
 } from '../../shared/schemas/token'
 import type { ProjectRef } from '../../shared/schemas/project'
 
@@ -12,6 +14,7 @@ export type TfPrincipal = {
   userId: string
   keyId: string
   actions: StateAction[]
+  varActions: VarAction[]
   scope: TokenScope
 }
 
@@ -89,9 +92,14 @@ export async function authenticateTf(event: H3Event): Promise<TfPrincipal> {
   const parsedActions = stateActionSchema.array().safeParse(result.key.permissions?.state ?? [])
   const actions: StateAction[] = parsedActions.success ? parsedActions.data : []
 
+  // Same fail-closed parse as `actions`. Every token issued before variables
+  // existed has no `vars` entry and lands here as [] — it is not widened.
+  const parsedVarActions = varActionSchema.array().safeParse(result.key.permissions?.vars ?? [])
+  const varActions: VarAction[] = parsedVarActions.success ? parsedVarActions.data : []
+
   // `referenceId`, not `userId`: the plugin's owner column is generic over
   // user-or-organization. `result.key.userId` does not exist.
-  return { userId: result.key.referenceId, keyId: result.key.id, actions, scope }
+  return { userId: result.key.referenceId, keyId: result.key.id, actions, varActions, scope }
 }
 
 /**
@@ -113,6 +121,26 @@ export function authorizeTf(principal: TfPrincipal, ref: ProjectRef, action: Sta
     throw createError({
       statusCode: 403,
       statusMessage: `Token does not permit the "${action}" action`
+    })
+  }
+}
+
+/**
+ * The variables door's step 3 and 4 (variables spec §5): the same project
+ * scope as state, and a separate resource, so a token that can read state
+ * cannot read secrets unless it was issued to.
+ */
+export function authorizeVars(principal: TfPrincipal, ref: ProjectRef): void {
+  if (!scopeAllows(principal.scope, ref.org, ref.project)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `Token is not scoped to ${ref.org}/${ref.project}`
+    })
+  }
+  if (!principal.varActions.includes('read')) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Token does not permit reading variables'
     })
   }
 }

@@ -4,7 +4,7 @@ export type ApiKeyBody = {
   userId: string
   name: string
   prefix: string
-  permissions: { state: string[] }
+  permissions: { state: string[]; vars?: string[] }
   metadata: { scope: TokenConfig['scope'] }
   expiresIn?: number
   rateLimitEnabled: boolean
@@ -30,7 +30,12 @@ export function toApiKeyBody(config: TokenConfig, userId: string): ApiKeyBody {
     userId,
     name: config.name,
     prefix: 'sm_',
-    permissions: { state: [...config.actions] },
+    // `vars` is written only when granted, so a state-only token is byte-for-
+    // byte what it was before variables existed (variables spec §6).
+    permissions:
+      config.varActions.length > 0
+        ? { state: [...config.actions], vars: [...config.varActions] }
+        : { state: [...config.actions] },
     metadata: { scope: config.scope },
     expiresIn: config.expiresInDays ? config.expiresInDays * 86_400 : undefined,
     rateLimitEnabled: true,

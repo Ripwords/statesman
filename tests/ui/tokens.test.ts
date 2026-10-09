@@ -84,6 +84,34 @@ describe('token config mapping', () => {
     expect(body.rateLimitMax).toBe(60)
     expect(body.rateLimitTimeWindow).toBe(60_000)
   })
+
+  it('omits the vars resource when no variable action is granted', () => {
+    const config = tokenConfigSchema.parse({
+      name: 'ci',
+      actions: ['read'],
+      scope: { kind: 'all' }
+    })
+    expect(toApiKeyBody(config, 'u1').permissions).toEqual({ state: ['read'] })
+  })
+
+  it('maps varActions onto the vars resource', () => {
+    const config = tokenConfigSchema.parse({
+      name: 'ci',
+      actions: ['read'],
+      varActions: ['read'],
+      scope: { kind: 'all' }
+    })
+    expect(toApiKeyBody(config, 'u1').permissions).toEqual({ state: ['read'], vars: ['read'] })
+  })
+
+  it('allows a variables-only token', () => {
+    const config = tokenConfigSchema.parse({
+      name: 'ci',
+      varActions: ['read'],
+      scope: { kind: 'all' }
+    })
+    expect(toApiKeyBody(config, 'u1').permissions).toEqual({ state: [], vars: ['read'] })
+  })
 })
 
 describe('token api', () => {

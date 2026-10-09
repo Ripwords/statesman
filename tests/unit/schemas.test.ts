@@ -88,3 +88,23 @@ describe('projectRefSchema', () => {
     expect(() => projectRefSchema.parse({ org: 'a', project: 'a/b' })).toThrow()
   })
 })
+
+describe('tokenConfigSchema permissions', () => {
+  it('refuses a token that grants nothing', () => {
+    const result = tokenConfigSchema.safeParse({
+      name: 'x',
+      actions: [],
+      varActions: [],
+      scope: { kind: 'all' }
+    })
+    expect(result.success).toBe(false)
+  })
+  it('refuses an unknown variable action', () => {
+    const result = tokenConfigSchema.safeParse({
+      name: 'x',
+      varActions: ['write'],
+      scope: { kind: 'all' }
+    })
+    expect(result.success).toBe(false)
+  })
+})

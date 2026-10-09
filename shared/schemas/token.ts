@@ -25,12 +25,23 @@ export const tokenScopeSchema = z.discriminatedUnion('kind', [
 ])
 export type TokenScope = z.infer<typeof tokenScopeSchema>
 
-export const tokenConfigSchema = z.object({
-  name: z.string().min(1).max(64),
-  actions: z.array(stateActionSchema).min(1),
-  scope: tokenScopeSchema,
-  expiresInDays: z.number().int().positive().max(3650).optional(),
-  rateLimitMax: z.number().int().positive().optional(),
-  rateLimitWindowSeconds: z.number().int().positive().optional()
-})
+export const varActionSchema = z.enum(['read'])
+export type VarAction = z.infer<typeof varActionSchema>
+
+export const tokenConfigSchema = z
+  .object({
+    name: z.string().min(1).max(64),
+    // Each list may be empty on its own: a token can be for state, for
+    // variables, or both. The refinement below refuses one that grants nothing.
+    actions: z.array(stateActionSchema).default([]),
+    varActions: z.array(varActionSchema).default([]),
+    scope: tokenScopeSchema,
+    expiresInDays: z.number().int().positive().max(3650).optional(),
+    rateLimitMax: z.number().int().positive().optional(),
+    rateLimitWindowSeconds: z.number().int().positive().optional()
+  })
+  .refine((c) => c.actions.length + c.varActions.length > 0, {
+    message: 'Grant at least one permission',
+    path: ['actions']
+  })
 export type TokenConfig = z.infer<typeof tokenConfigSchema>
