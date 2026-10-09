@@ -9,10 +9,15 @@ const TAG_BYTES = 16
  *
  * A fresh random IV per call is what makes two seals of identical plaintext
  * produce different bytes. Never reuse an IV with the same key.
+ *
+ * `aad` binds the ciphertext to where it is stored without being stored in it:
+ * opening with any other aad, or none, throws. State blobs pass none; variables
+ * pass their environment and name (variables spec §4).
  */
-export function seal(key: Buffer, plaintext: Uint8Array): Buffer {
+export function seal(key: Buffer, plaintext: Uint8Array, aad?: Uint8Array): Buffer {
   const iv = randomBytes(IV_BYTES)
   const cipher = createCipheriv(ALGORITHM, key, iv)
+  if (aad) cipher.setAAD(aad)
   const body = Buffer.concat([cipher.update(plaintext), cipher.final()])
   return Buffer.concat([iv, cipher.getAuthTag(), body])
 }
@@ -21,7 +26,7 @@ export function seal(key: Buffer, plaintext: Uint8Array): Buffer {
  * Throws if the payload was tampered with or the key is wrong — a corrupt
  * blob must fail loudly rather than return plausible-looking garbage.
  */
-export function open(key: Buffer, sealed: Uint8Array): Buffer {
+export function open(key: Buffer, sealed: Uint8Array, aad?: Uint8Array): Buffer {
   const buf = Buffer.from(sealed)
   if (buf.length < IV_BYTES + TAG_BYTES) {
     throw new Error('ciphertext too short to be valid')
@@ -31,5 +36,6 @@ export function open(key: Buffer, sealed: Uint8Array): Buffer {
   const body = buf.subarray(IV_BYTES + TAG_BYTES)
   const decipher = createDecipheriv(ALGORITHM, key, iv)
   decipher.setAuthTag(tag)
+  if (aad) decipher.setAAD(aad)
   return Buffer.concat([decipher.update(body), decipher.final()])
 }
