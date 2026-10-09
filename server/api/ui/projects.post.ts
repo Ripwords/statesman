@@ -5,6 +5,7 @@ import { createProjectSchema } from '../../../shared/schemas/project'
 import { chooseOrganization } from '../../utils/organization'
 import { recordAuditBestEffort } from '../../services/audit'
 import { requireAdmin } from '../../utils/ui-auth'
+import { ensureAccessRecord } from '../../utils/project-access'
 
 /**
  * Creates a project. This is the only way one comes into existence through the
@@ -46,6 +47,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: `${owner.slug}/${input.project} already exists`
     })
   }
+
+  await ensureAccessRecord(id, input.project)
 
   await recordAuditBestEffort({
     orgId: owner.id,
