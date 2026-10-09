@@ -22,9 +22,11 @@ export default defineEventHandler(async (event) => {
   }
   const ref = { org: params.org, project: params.project }
   const resolved = await resolveProject(ref)
+  // Authorize before looking the environment up, so a token that may not read
+  // variables cannot use 403 versus 404 to learn which environments exist.
+  authorizeVars(principal, ref)
   const found = await findEnvironment(resolved.id, params.environment)
   if (!found) throw createError({ statusCode: 404, statusMessage: 'Unknown environment' })
-  authorizeVars(principal, ref)
 
   const values = await readDeliveryValues(found.id)
   setResponseHeader(event, 'cache-control', 'no-store')

@@ -77,6 +77,10 @@ describe('GET /api/vars/:org/:project/:environment', () => {
     expect((await get(path, tokens.stateOnly)).status).toBe(403)
   })
 
+  it('answers 403, not 404, to an unauthorized token asking for an unknown environment', async () => {
+    expect((await get(`/api/vars/${ORG}/prod/staging`, tokens.stateOnly)).status).toBe(403)
+  })
+
   it('answers 403 to a token scoped to another project', async () => {
     expect((await get(path, tokens.elsewhere)).status).toBe(403)
   })

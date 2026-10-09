@@ -3,6 +3,9 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../../server/db/client'
 import { environment, variable } from '../../server/db/schema'
+import { env } from '../../server/utils/env'
+import { seal } from '../../server/utils/crypto'
+import { variableAad } from '../../shared/schemas/variable'
 import { resetDb, seedProject, seedUser } from '../protocol/helpers'
 import {
   createEnvironment,
@@ -221,5 +224,24 @@ describe('downgrade race and cross-environment ciphertext', () => {
       })
     await expect(readDeliveryValues(other.id)).rejects.toThrow()
     await expect(listStoredForUi(other.id)).rejects.toThrow()
+  })
+
+  it('does not leak plaintext through the error when a sealed value is not JSON', async () => {
+    const secret = 'hunter2-not-json'
+    const valueSealed = seal(
+      env().ENCRYPTION_KEY,
+      Buffer.from(secret),
+      variableAad(envId, 'bad')
+    ).toString('base64')
+    await db()
+      .insert(variable)
+      .values({ id: 'bad-row', environmentId: envId, name: 'bad', valueSealed, sensitive: true })
+    const error = await readDeliveryValues(envId).then(
+      () => null,
+      (e: unknown) => e
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe('stored variable value is corrupt')
+    expect((error as Error).message).not.toContain(secret)
   })
 })

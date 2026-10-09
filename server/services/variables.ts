@@ -31,8 +31,13 @@ function openValue(environmentId: string, name: string, sealed: string): JsonVal
     Buffer.from(sealed, 'base64'),
     variableAad(environmentId, name)
   )
-  const parsed: JsonValue = JSON.parse(plain.toString('utf8'))
-  return parsed
+  try {
+    const parsed: JsonValue = JSON.parse(plain.toString('utf8'))
+    return parsed
+  } catch {
+    // V8's SyntaxError message quotes the plaintext; never let it escape.
+    throw new Error('stored variable value is corrupt')
+  }
 }
 
 export async function environmentContext(environmentId: string): Promise<EnvironmentContext> {
