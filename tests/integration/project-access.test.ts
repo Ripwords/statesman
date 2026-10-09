@@ -5,7 +5,7 @@ import { Client } from 'pg'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { projectAccess } from '../../server/db/schema'
+import { projectAccess, projectMember } from '../../server/db/schema'
 import {
   provisionUser,
   signInHeaders,
@@ -16,6 +16,7 @@ import {
 } from '../protocol/helpers'
 import {
   requireProjectPermission,
+  effectiveRole,
   effectiveRoleOfUser,
   ensureAccessRecord
 } from '../../server/utils/project-access'
@@ -195,5 +196,54 @@ describe('ensureAccessRecord', () => {
     await ensureAccessRecord(p, 'healed')
     await ensureAccessRecord(p, 'healed')
     expect(await db().select().from(projectAccess).where(eq(projectAccess.id, p))).toHaveLength(1)
+  })
+})
+
+describe('guard edge cases', () => {
+  it('treats an unrecognised role string as no access', async () => {
+    const u = await provisionUser(`pa-odd-${Date.now()}@example.com`, PASSWORD)
+    await db()
+      .insert(projectMember)
+      .values({ id: ulid(), organizationId: projectId, userId: u.id, role: 'superuser' })
+    const odd = Object.fromEntries((await signInHeaders(u.email, PASSWORD)).entries())
+    expect(await effectiveRole({ userId: u.id, role: 'member' }, projectId)).toBeNull()
+    expect(
+      await refusal(
+        requireProjectPermission(testEvent({ headers: odd }), projectId, 'project:read')
+      )
+    ).toEqual({ status: 404, message: 'Unknown project. Check the project id and try again.' })
+  })
+
+  it('answers an admin on an unknown project exactly as it answers a stranger', async () => {
+    const stranger = await refusal(
+      requireProjectPermission(
+        testEvent({ headers: headers.stranger }),
+        'no-such-project',
+        'project:read'
+      )
+    )
+    const admin = await refusal(
+      requireProjectPermission(
+        testEvent({ headers: headers.admin }),
+        'no-such-project',
+        'project:read'
+      )
+    )
+    expect(admin).toEqual({
+      status: 404,
+      message: 'Unknown project. Check the project id and try again.'
+    })
+    expect(admin).toEqual(stranger)
+  })
+
+  it('lets an admin through on a real project whose access row is missing', async () => {
+    const p = await seedProject(ORG, 'no-access-row')
+    await db().delete(projectAccess).where(eq(projectAccess.id, p))
+    const principal = await requireProjectPermission(
+      testEvent({ headers: headers.admin }),
+      p,
+      'environment:create'
+    )
+    expect(principal.projectRole).toBe('admin')
   })
 })

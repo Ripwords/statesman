@@ -2,7 +2,14 @@ import type { H3Event } from 'h3'
 import { and, eq } from 'drizzle-orm'
 import { createAccessControl } from 'better-auth/plugins/access'
 import { db } from '../db/client'
-import { environment, projectAccess, projectMember, stateVersion, user } from '../db/schema'
+import {
+  environment,
+  project,
+  projectAccess,
+  projectMember,
+  stateVersion,
+  user
+} from '../db/schema'
 import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
 import { isAdmin, roleOf, type UserRole } from '../../shared/schemas/user'
 import { requireSession, type Principal } from './ui-auth'
@@ -119,10 +126,10 @@ export async function effectiveRoleOfUser(
  * then 404 for no role (identical to an unknown project), then 403 naming
  * the role needed.
  *
- * A member always has an access row (the membership FK guarantees it), so a
- * non-admin pass means the project is real. An admin is `admin` on any id,
- * including one that does not exist; the route's own lookup still 404s then,
- * and an admin passes for a real project whose access row is missing (spec §4).
+ * A guard pass always means the project exists. A member's access row is
+ * proof enough (membership FK). An admin is `admin` on any id, so the
+ * `project` table is checked for them; `project`, not `project_access`, so an
+ * admin still passes for a real project whose access row is missing (spec §4).
  */
 export async function requireProjectPermission(
   event: H3Event,
@@ -132,6 +139,13 @@ export async function requireProjectPermission(
   const principal = await requireSession(event)
   const role = await effectiveRole(principal, projectId)
   if (role === null) notFound()
+  if (role === 'admin') {
+    const real = await db()
+      .select({ id: project.id })
+      .from(project)
+      .where(eq(project.id, projectId))
+    if (real.length === 0) notFound()
+  }
   if (!projectCan(role, permission)) {
     throw createError({
       statusCode: 403,
