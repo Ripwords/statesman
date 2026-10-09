@@ -111,7 +111,9 @@ with two or more, a switcher appears.
 - **Import** takes a JSON object (`{"region": "eu-west-1"}`) or a `.tfvars`
   file. It shows what it will create and overwrite before anything is written.
 
-Variables are **sensitive** by default. A sensitive value is write-only in the
+Variables are **sensitive** by default. A variable a linked repository declares
+but that has no value yet also opens with **Sensitive** on, whatever its
+`variable` block says. A sensitive value is write-only in the
 dashboard: it is shown as `••••••`, never sent back to the browser, and an edit
 that leaves the value empty keeps the current one. Only a token with **Read
 Variables** can read it, through the download below. Anything you mark as not
@@ -135,7 +137,9 @@ Terraform print a warning. It does not fail the run.
 
 Also optional. An admin can link an environment to a GitHub repository from the
 Variables tab, so statesman reads the `variable` blocks in its `.tf` files and
-marks each stored variable as declared or not. It only reads, and it needs a
+marks each stored variable as declared or not. A declared `description` shows
+in the table until you store one of your own; the edit form leaves it out, so
+saving does not copy it. It only reads, and it needs a
 GitHub App that you register for your own deployment. Without one the tab shows
 no repository panel at all. [docs/github-app.md](docs/github-app.md) walks
 through registering it, connecting it and fixing a failed sync.

@@ -3,6 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import { statusMessageOf } from '~/utils/status-message'
 import { relativeTime } from '~/utils/relative-time'
 import { formatValue } from '~/utils/variable-value'
+import { shownDescription } from '~/utils/variable-form'
 
 const props = defineProps<{ projectId: string }>()
 
@@ -246,7 +247,7 @@ const curl = computed(
           >
         </template>
         <template #description-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.description }}</span>
+          <span class="text-sm text-muted">{{ shownDescription(row.original) }}</span>
         </template>
         <template #updatedAt-cell="{ row }">
           <span v-if="row.original.updatedAt" class="text-sm text-muted tabular">

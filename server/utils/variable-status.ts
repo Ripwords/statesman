@@ -17,8 +17,13 @@ export type VariableRow = {
   /** Null when no repository is linked or none has synced: there is nothing to compare with. */
   status: VariableStatus | null
   stored: boolean
+  /**
+   * The stored flag. An unstored row is `true`: the spec's default (§7), not
+   * the declared block's, since Terraform's own `sensitive` defaults to false.
+   */
   sensitive: boolean
   value?: JsonValue
+  /** The stored description only; the panel falls back to `declared.description`. */
   description: string | null
   updatedAt: string | null
   updatedBy: string | null
@@ -60,8 +65,8 @@ export function mergeVariables(
       name,
       status,
       stored: s !== undefined,
-      sensitive: s?.sensitive ?? d?.sensitive ?? true,
-      description: s?.description || d?.description || null,
+      sensitive: s ? s.sensitive : true,
+      description: s?.description || null,
       updatedAt: s ? s.updatedAt.toISOString() : null,
       updatedBy: s?.updatedBy ?? null,
       declared: d

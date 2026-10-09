@@ -50,9 +50,12 @@ describe('mergeVariables', () => {
     expect(rows.map((r) => r.name)).toEqual(['z', 'a', 'b'])
   })
 
-  it('falls back to the declared description', () => {
+  // The fallback is the panel's (`shownDescription`): a merged value here would
+  // prefill the edit form and be saved as if an admin had typed it.
+  it('keeps the declared description apart from the stored one', () => {
     const rows = mergeVariables([stored('a')], [declared('a', { description: 'from repo' })])
-    expect(rows[0]?.description).toBe('from repo')
+    expect(rows[0]?.description).toBeNull()
+    expect(rows[0]?.declared?.description).toBe('from repo')
   })
 
   it('prefers the stored description', () => {
@@ -73,12 +76,17 @@ describe('mergeVariables', () => {
     expect(rows[0]?.value).toBe(3)
   })
 
-  it('falls back to the declared description when the stored one is empty', () => {
+  it('reports an empty stored description as none', () => {
     const rows = mergeVariables(
       [stored('a', { description: '' })],
       [declared('a', { description: 'repo' })]
     )
-    expect(rows[0]?.description).toBe('repo')
+    expect(rows[0]?.description).toBeNull()
+  })
+
+  it('reports an unstored row as sensitive whatever the block declares', () => {
+    const rows = mergeVariables([], [declared('a', { sensitive: false })])
+    expect(rows[0]?.sensitive).toBe(true)
   })
 
   it('sorts by code point, so uppercase precedes lowercase', () => {

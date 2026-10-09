@@ -4,7 +4,8 @@ import { z } from 'zod'
 import type { VariableRow } from '~~/server/utils/variable-status'
 import { setVariableSchema, variableNameSchema } from '~~/shared/schemas/variable'
 import { statusMessageOf } from '~/utils/status-message'
-import { formatValue, parseEditorValue } from '~/utils/variable-value'
+import { parseEditorValue } from '~/utils/variable-value'
+import { seedVariableForm, variablePutBody } from '~/utils/variable-form'
 
 const props = defineProps<{
   environmentId: string
@@ -28,7 +29,7 @@ const valueError = ref<string | null>(null)
 const formError = ref<string | null>(null)
 const pending = ref(false)
 
-const keepsSecret = computed(() => props.existing?.sensitive === true)
+const keepsSecret = ref(false)
 
 // Re-seeded on every open so a cancelled edit never leaks into the next one.
 // A sensitive value is never sent to the browser, so it never prefills.
@@ -36,19 +37,15 @@ watch(
   open,
   (isOpen) => {
     if (!isOpen) return
-    const row = props.existing
-    state.name = row?.name ?? ''
-    state.description = row?.description ?? ''
-    sensitive.value = row?.sensitive ?? true
+    const seed = seedVariableForm(props.existing)
+    state.name = seed.name
+    state.description = seed.description
+    sensitive.value = seed.sensitive
+    jsonMode.value = seed.jsonMode
+    valueText.value = seed.valueText
+    keepsSecret.value = seed.keepsSecret
     valueError.value = null
     formError.value = null
-    if (row && !row.sensitive && row.value !== undefined) {
-      jsonMode.value = typeof row.value !== 'string'
-      valueText.value = formatValue(row.value)
-    } else {
-      jsonMode.value = false
-      valueText.value = ''
-    }
   },
   { immediate: true }
 )
@@ -68,16 +65,11 @@ async function onSubmit(event: FormSubmitEvent<FormState>) {
   }
   pending.value = true
   try {
-    // `description` is always sent: the route treats an omitted one as "clear".
     await $fetch(
       `/api/ui/environments/${props.environmentId}/variables/${encodeURIComponent(event.data.name)}`,
       {
         method: 'PUT',
-        body: {
-          ...(value?.ok ? { value: value.value } : {}),
-          sensitive: sensitive.value,
-          description: event.data.description ? event.data.description : null
-        }
+        body: variablePutBody({ sensitive: sensitive.value }, value, event.data.description)
       }
     )
     emit('saved')
