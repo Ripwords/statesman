@@ -249,13 +249,12 @@ const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
   ['GET /api/github/setup', (h) => githubSetup(testEvent({ headers: h })), ADMIN],
   ['GET /api/ui/github', (h) => githubStatus(testEvent({ headers: h })), ANY_SESSION],
   ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h })), ADMIN],
-  // Token routes stay admin-only until the token task moves them to project owners.
-  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h })), ADMIN],
-  ['POST /api/ui/tokens', (h) => createToken(testEvent({ headers: h, body: {} })), ADMIN],
+  ['GET /api/ui/tokens', (h) => listTokens(testEvent({ headers: h })), OWNER_SOMEWHERE],
+  ['POST /api/ui/tokens', (h) => createToken(testEvent({ headers: h, body: {} })), OWNER_SOMEWHERE],
   [
     'DELETE /api/ui/tokens/:id',
     (h) => deleteToken(testEvent({ headers: h, params: { id: 'k1' } })),
-    ADMIN
+    OWNER_SOMEWHERE
   ]
 ]
 

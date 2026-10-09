@@ -1,4 +1,9 @@
-import { authenticateTf, authorizeTf } from '../../../../utils/tf-auth'
+import {
+  authenticateTf,
+  authorizeTf,
+  requireCreatorAccess,
+  stateNeed
+} from '../../../../utils/tf-auth'
 import {
   refFromEvent,
   resolveProject,
@@ -31,6 +36,7 @@ export default defineEventHandler(async (event) => {
   const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
   authorizeTf(principal, ref, action)
+  await requireCreatorAccess(principal, resolved, stateNeed(action))
 
   if (method === 'GET') {
     const body = await readCurrentState(resolved.id)

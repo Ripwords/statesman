@@ -1,4 +1,4 @@
-import { authenticateTf, authorizeVars } from '../../../../utils/tf-auth'
+import { authenticateTf, authorizeVars, requireCreatorAccess } from '../../../../utils/tf-auth'
 import { resolveProject } from '../../../../utils/tf-handler'
 import { findEnvironment, readDeliveryValues } from '../../../../services/variables'
 import { recordAuditBestEffort } from '../../../../services/audit'
@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
   // Authorize before looking the environment up, so a token that may not read
   // variables cannot use 403 versus 404 to learn which environments exist.
   authorizeVars(principal, ref)
+  await requireCreatorAccess(principal, resolved, 'vars:read')
   const found = await findEnvironment(resolved.id, params.environment)
   if (!found) throw createError({ statusCode: 404, statusMessage: 'Unknown environment' })
 

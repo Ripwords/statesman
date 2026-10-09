@@ -1,7 +1,7 @@
 import { tokenConfigSchema } from '../../../shared/schemas/token'
 import { auth } from '../../utils/auth'
 import { toApiKeyBody } from '../../utils/token-mapping'
-import { requireAdmin } from '../../utils/ui-auth'
+import { requireTokenAuthority, requireTokenPage } from '../../utils/project-access'
 
 /**
  * Creates a token and returns its raw value exactly once (spec §4). Keys are
@@ -14,10 +14,11 @@ import { requireAdmin } from '../../utils/ui-auth'
  * server-side path.
  */
 export default defineEventHandler(async (event) => {
-  const session = await requireAdmin(event)
+  const session = await requireTokenPage(event)
   // A malformed configuration is a 400, which is exactly what h3 raises from a
   // validator throw, so this needs no catch (CARRY-FORWARD §7c).
   const config = await readValidatedBody(event, tokenConfigSchema.parse)
+  await requireTokenAuthority(session, config.scope)
   const created = await auth.api.createApiKey({ body: toApiKeyBody(config, session.userId) })
   return { id: created.id, key: created.key, name: created.name ?? config.name }
 })

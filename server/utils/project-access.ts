@@ -4,6 +4,7 @@ import { createAccessControl } from 'better-auth/plugins/access'
 import { db } from '../db/client'
 import {
   environment,
+  organization,
   project,
   projectAccess,
   projectMember,
@@ -13,6 +14,7 @@ import {
 import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
 import { isAdmin, roleOf, type UserRole } from '../../shared/schemas/user'
 import { requireSession, type Principal } from './ui-auth'
+import type { TokenScope } from '../../shared/schemas/token'
 
 /**
  * What a project role may do, in the organization plugin's vocabulary.
@@ -190,4 +192,49 @@ export async function ensureAccessRecord(projectId: string, name: string): Promi
     .insert(projectAccess)
     .values({ id: projectId, name, slug: projectId })
     .onConflictDoNothing({ target: projectAccess.id })
+}
+
+/**
+ * Gate for the token pages: admins and anyone who owns a project. Returns the
+ * session so callers need not read it twice.
+ */
+export async function requireTokenPage(event: H3Event): Promise<Principal> {
+  const session = await requireSession(event)
+  if (!isAdmin(session.role) && !(await ownsAnyProject(session.userId))) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Tokens are for admins and project owners. Ask a project owner.'
+    })
+  }
+  return session
+}
+
+/**
+ * Token creation (spec §7): `all` is admin-only; a project list needs owner on
+ * every listed project. Resolves `org/project` refs to ids; an unknown ref is
+ * the same 403 as an unowned one, so token creation cannot probe for slugs.
+ * Any scope kind other than a project list is refused for a non-admin.
+ */
+export async function requireTokenAuthority(
+  principal: Principal,
+  scope: TokenScope
+): Promise<void> {
+  if (isAdmin(principal.role)) return
+  const refuse = (): never => {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You can only create tokens for projects you own.'
+    })
+  }
+  if (scope.kind !== 'projects') return refuse()
+  for (const ref of scope.projects) {
+    const [org, slug] = ref.split('/')
+    const rows = await db()
+      .select({ id: project.id })
+      .from(project)
+      .innerJoin(organization, eq(project.orgId, organization.id))
+      .where(and(eq(organization.slug, org ?? ''), eq(project.slug, slug ?? '')))
+    const id = rows[0]?.id
+    if (!id || (await effectiveRole(principal, id)) !== 'owner') refuse()
+  }
 }

@@ -1,4 +1,4 @@
-import { authenticateTf, authorizeTf } from '../../../../utils/tf-auth'
+import { authenticateTf, authorizeTf, requireCreatorAccess } from '../../../../utils/tf-auth'
 import {
   refFromEvent,
   resolveProject,
@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
   const ref = await refFromEvent(event)
   const resolved = await resolveProject(ref)
   authorizeTf(principal, ref, 'lock')
+  await requireCreatorAccess(principal, resolved, 'state:write')
 
   return ACQUIRE.has(method)
     ? handleLockAcquire(event, resolved, principal)

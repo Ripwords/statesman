@@ -9,6 +9,9 @@ import {
   type VarAction
 } from '../../shared/schemas/token'
 import type { ProjectRef } from '../../shared/schemas/project'
+import type { ProjectRole } from '../../shared/schemas/project-role'
+import { effectiveRoleOfUser, type EffectiveRole } from './project-access'
+import type { ResolvedProject } from './tf-handler'
 
 export type TfPrincipal = {
   userId: string
@@ -47,11 +50,9 @@ export function parseBasicAuth(header: string | undefined): string | null {
  * `acme/prod-2`.
  */
 export function scopeAllows(scope: TokenScope, org: string, project: string): boolean {
-  // `all` means every project in the deployment, and says so. It is not
-  // narrowed to the owning user, because there is nothing to narrow it to: one
-  // deployment serves one organization (spec §5) and every account can already
-  // reach every project. Spec §4 used to claim otherwise; the wording was the
-  // error, not this line.
+  // `all` means every project in the deployment, and says so. It is honoured
+  // only while the creator is a deployment admin: requireCreatorAccess
+  // enforces that on every request, so this line stays a pure scope check.
   if (scope.kind === 'all') return true
   return scope.projects.includes(`${org}/${project}`)
 }
@@ -141,6 +142,45 @@ export function authorizeVars(principal: TfPrincipal, ref: ProjectRef): void {
     throw createError({
       statusCode: 403,
       statusMessage: 'Token does not permit reading variables'
+    })
+  }
+}
+
+export type CreatorNeed = 'state:read' | 'state:write' | 'vars:read'
+
+/** R1: anything that changes state (write, lock, delete) needs editor. */
+export function stateNeed(action: StateAction): CreatorNeed {
+  return action === 'read' ? 'state:read' : 'state:write'
+}
+
+const FLOOR: Record<CreatorNeed, ProjectRole> = {
+  'state:read': 'viewer',
+  'state:write': 'editor',
+  'vars:read': 'owner'
+}
+const RANK: Record<EffectiveRole, number> = { viewer: 0, editor: 1, owner: 2, admin: 3 }
+
+/**
+ * A token is its creator's authority, delegated (project-access spec §7). It
+ * is re-checked on every request so that removing someone from a project
+ * disarms their CI tokens without anyone having to find and revoke them.
+ * Runs after authorizeTf / authorizeVars, which check the token's own scope
+ * and actions. A deleted creator or an unrecognised role resolves to no
+ * access, which is the same 403.
+ */
+export async function requireCreatorAccess(
+  principal: TfPrincipal,
+  resolved: ResolvedProject,
+  need: CreatorNeed
+): Promise<void> {
+  const role = await effectiveRoleOfUser(principal.userId, resolved.id)
+  const allowed =
+    role !== null &&
+    (principal.scope.kind === 'all' ? role === 'admin' : RANK[role] >= RANK[FLOOR[need]])
+  if (!allowed) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `The account that created this token no longer has access to ${resolved.ref.org}/${resolved.ref.project}`
     })
   }
 }
