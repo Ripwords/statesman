@@ -110,7 +110,6 @@ with two or more, a switcher appears.
 - **Edit** changes a variable. Its name cannot change.
 - **Import** takes a JSON object (`{"region": "eu-west-1"}`) or a `.tfvars`
   file. It shows what it will create and overwrite before anything is written.
-  `.tfvars` import is not available yet; JSON works today.
 
 Variables are **sensitive** by default. A sensitive value is write-only in the
 dashboard: it is shown as `••••••`, never sent back to the browser, and an edit
@@ -132,6 +131,15 @@ to `.gitignore`, because the file holds the secrets.
 A value for which the configuration has no matching `variable` block makes
 Terraform print a warning. It does not fail the run.
 
+### Finding out which variables a repository declares
+
+Also optional. An admin can link an environment to a GitHub repository from the
+Variables tab, so statesman reads the `variable` blocks in its `.tf` files and
+marks each stored variable as declared or not. It only reads, and it needs a
+GitHub App that you register for your own deployment. Without one the tab shows
+no repository panel at all. [docs/github-app.md](docs/github-app.md) walks
+through registering it, connecting it and fixing a failed sync.
+
 ## Roles, and what every account can still read
 
 There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
@@ -140,15 +148,22 @@ database access and `BETTER_AUTH_SECRET`.
 
 There are two roles:
 
-|                                  | admin | member |
-| -------------------------------- | ----- | ------ |
-| Read projects, versions, diffs   | yes   | yes    |
-| Create projects                  | yes   | no     |
-| Force unlock, roll back          | yes   | no     |
-| Create and revoke tokens         | yes   | no     |
-| Manage accounts and roles        | yes   | no     |
-| Reset another account's password | yes   | no     |
-| Run retention on demand          | yes   | no     |
+|                                            | admin | member |
+| ------------------------------------------ | ----- | ------ |
+| Read projects, versions, diffs             | yes   | yes    |
+| Create projects                            | yes   | no     |
+| Force unlock, roll back                    | yes   | no     |
+| Create and revoke tokens                   | yes   | no     |
+| Manage accounts and roles                  | yes   | no     |
+| Reset another account's password           | yes   | no     |
+| Run retention on demand                    | yes   | no     |
+| See environments, variable names, statuses | yes   | yes    |
+| See non-sensitive values                   | yes   | yes    |
+| See sensitive values                       | no    | no     |
+| Create, edit, delete variables             | yes   | no     |
+| Create, delete environments                | yes   | no     |
+| Connect GitHub, link and sync repositories | yes   | no     |
+| Create tokens with variable access         | yes   | no     |
 
 The first account on a deployment is always an admin — nothing else could
 promote it — and every account after that is a member unless you pass
@@ -157,8 +172,9 @@ be left with nobody able to manage accounts, tokens or locks and no endpoint
 that could undo it.
 
 **The split is about who may change things, not about who may see them.** Both
-roles read every project's decrypted state, and there are still no per-project
-permissions and no ownership:
+roles read every project's decrypted state and every non-sensitive variable.
+Sensitive variables are readable only with a token that has variable access.
+There are still no per-project permissions and no ownership:
 
 > Creating an account of either role grants read access to the **plaintext** of
 > every state file in the deployment, including the provider credentials and
@@ -189,12 +205,12 @@ out, `pnpm user:create` from a machine with database access is the way back.
 
 ## Back up `STATESMAN_ENCRYPTION_KEY` separately from the database
 
-> **Lose this key and every version of every state file is permanently
-> unreadable.** There is no recovery path, no escrow, and no support channel
-> that can help. Terraform state cannot be regenerated — it is the only record
+> **Lose this key and every stored version of state **and variables** is
+> permanently unreadable.** There is no recovery path, no escrow,
+> and no support channel that can help. Terraform state cannot be regenerated — it is the only record
 > of which real resource each address maps to.
 
-State is encrypted with AES-256-GCM before it reaches storage. The key lives
+State **and variables** are encrypted with AES-256-GCM before they reach storage. The key lives
 only in the environment. It is not in the database, not in the blob store, and
 not derivable from either.
 
@@ -269,6 +285,11 @@ answer.
   encryption key — so it runs from an operator machine or the migration
   container. The role defaults to `member`, except on a deployment with no admin
   yet, where it makes one and says so.
+- **`pnpm vendor:wasm`** copies the HCL parser's two `.wasm` files from
+  `node_modules` into `server/assets/wasm/`, where they are committed so every
+  deployment preset bundles them. Run it after bumping `web-tree-sitter` or
+  `@tree-sitter-grammars/tree-sitter-hcl`, and commit the result. The unit test
+  `tests/unit/wasm-vendored.test.ts` fails until you do.
 - **Retention** runs as a scheduled task at 03:17 daily on a long-running
   server. Nitro has no scheduler on serverless, so a Vercel deployment needs an
   external trigger: set `CRON_SECRET` and the bundled `vercel.json` cron calls

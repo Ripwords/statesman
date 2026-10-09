@@ -65,6 +65,11 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       RETENTION_KEEP_VERSIONS: ${RETENTION_KEEP_VERSIONS:-100}
       RETENTION_KEEP_DAYS: ${RETENTION_KEEP_DAYS:-30}
+      # Optional, all four or none (docs/github-app.md). Empty means off.
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
     # Only used by STORAGE_DRIVER=local. Harmless with the s3 driver, and it
     # means switching drivers does not also mean editing the volume list.
     volumes: ['statedata:/data/state']

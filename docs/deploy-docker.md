@@ -36,6 +36,10 @@ environment is assembled inside the compose file.
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | no | — | omit both to use the AWS default credential chain |
 | `RETENTION_KEEP_VERSIONS` | no | `100` | |
 | `RETENTION_KEEP_DAYS` | no | `30` | |
+| `GITHUB_APP_ID` | No (all four or none) | — | optional GitHub App for the Variables tab. See [docs/github-app.md](github-app.md) |
+| `GITHUB_APP_SLUG` | No (all four or none) | — | |
+| `GITHUB_APP_PRIVATE_KEY` | No (all four or none) | — | in an env file, write it on one line with `\n` for line breaks |
+| `GITHUB_APP_WEBHOOK_SECRET` | No (all four or none) | — | |
 
 The four required variables use compose's `${VAR:?}` form, so a missing one
 fails the deployment before anything starts:

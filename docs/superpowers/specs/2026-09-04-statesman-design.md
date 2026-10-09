@@ -10,6 +10,11 @@
 > project's decrypted state, and there are still no per-project permissions.
 > The README is the current description.
 
+> **Later change, 2026-10-09.** Variables were added alongside state — see
+> [2026-10-09-variables-design.md](2026-10-09-variables-design.md). The §4
+> sentence that every account reads every project's secrets now has one
+> exception: sensitive variables are write-only in the dashboard.
+
 A self-hostable Terraform/OpenTofu HTTP state backend with encrypted state at
 rest, full version history, and scoped API tokens.
 

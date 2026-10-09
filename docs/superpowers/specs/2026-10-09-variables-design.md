@@ -1,7 +1,7 @@
 # statesman variables — Design Spec
 
 **Date:** 2026-10-09
-**Status:** Approved 2026-10-09. Plan: `docs/superpowers/plans/2026-10-09-variables.md`.
+**Status:** Implemented. Plan: `docs/superpowers/plans/2026-10-09-variables.md`.
 
 Encrypted storage and delivery of Terraform input variables (the contents of a
 `.tfvars` file), per project and environment, with optional GitHub App

@@ -46,6 +46,10 @@ environment the project deploys.
 | `CRON_SECRET` | for retention | any long random value, `openssl rand -base64 32`. Vercel sends it to the scheduled job; without it retention never runs here |
 | `RETENTION_KEEP_VERSIONS` | no | defaults to `100` |
 | `RETENTION_KEEP_DAYS` | no | defaults to `30` |
+| `GITHUB_APP_ID` | No (all four or none) | optional GitHub App for the Variables tab. See [docs/github-app.md](github-app.md) |
+| `GITHUB_APP_SLUG` | No (all four or none) | |
+| `GITHUB_APP_PRIVATE_KEY` | No (all four or none) | one line, with `\n` for line breaks |
+| `GITHUB_APP_WEBHOOK_SECRET` | No (all four or none) | |
 
 `BETTER_AUTH_URL` must match the origin browsers actually use. A preview
 deployment on a `*.vercel.app` URL will not complete a sign-in against a
