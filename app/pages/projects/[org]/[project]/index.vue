@@ -55,6 +55,17 @@ const versionOptions = computed(() =>
   (history.value?.versions ?? []).map((v) => ({ label: `#${v.serial ?? '?'}`, value: v.id }))
 )
 
+const tabItems = [
+  { label: 'State', value: 'state' },
+  { label: 'Variables', value: 'variables' }
+]
+const tab = computed({
+  get: () => (route.query.tab === 'variables' ? 'variables' : 'state'),
+  set: (value: string) => {
+    void navigateTo({ query: { ...route.query, tab: value === 'state' ? undefined : value } })
+  }
+})
+
 const notice = ref<string | null>(null)
 const noticeEl = useTemplateRef<HTMLElement>('noticeEl')
 
@@ -176,103 +187,109 @@ const bytes = new Intl.NumberFormat(undefined, {
     </EmptyState>
 
     <template v-else>
-      <!--
+      <UTabs v-model="tab" :items="tabItems" :content="false" class="w-full" />
+
+      <VariablesPanel v-if="tab === 'variables'" :project-id="current.id" />
+
+      <template v-else>
+        <!--
         lockedAt, not lockedBy: a client that omits `Who` from its LockInfo held
         a lock this banner never rendered, which also removed the only
         Force Unlock button in the product. See app/utils/lock.ts.
       -->
-      <LockBanner
-        v-if="isLocked(current)"
-        :project-id="current.id"
-        :who="current.lockedBy"
-        :since="current.lockedAt"
-        @released="onLockReleased"
-      />
-
-      <div
-        v-else-if="notice"
-        ref="noticeEl"
-        tabindex="-1"
-        class="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <UAlert
-          color="success"
-          variant="subtle"
-          icon="i-lucide-circle-check"
-          :description="notice"
-          :close="true"
-          @update:open="notice = null"
+        <LockBanner
+          v-if="isLocked(current)"
+          :project-id="current.id"
+          :who="current.lockedBy"
+          :since="current.lockedAt"
+          @released="onLockReleased"
         />
-      </div>
 
-      <EmptyState
-        v-if="!history || history.versions.length === 0"
-        icon="i-lucide-history"
-        title="No Versions Yet"
-        description="Run terraform apply against this project and the first version appears here."
-      />
-
-      <div v-else class="space-y-4">
-        <div class="flex flex-wrap items-end gap-3">
-          <UFormField label="Compare" name="compare-a" class="w-44">
-            <USelect
-              v-model="compareA"
-              :items="versionOptions"
-              placeholder="Older version…"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="With" name="compare-b" class="w-44">
-            <USelect
-              v-model="compareB"
-              :items="versionOptions"
-              placeholder="Newer version…"
-              class="w-full"
-            />
-          </UFormField>
-          <UButton
-            :disabled="!compareA || !compareB || compareA === compareB"
-            :to="`/projects/${org}/${slug}/diff?a=${compareA}&b=${compareB}`"
-            label="View Diff"
-            icon="i-lucide-git-compare"
+        <div
+          v-else-if="notice"
+          ref="noticeEl"
+          tabindex="-1"
+          class="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <UAlert
+            color="success"
+            variant="subtle"
+            icon="i-lucide-circle-check"
+            :description="notice"
+            :close="true"
+            @update:open="notice = null"
           />
         </div>
 
-        <ol class="space-y-2">
-          <li
-            v-for="v in history.versions"
-            :key="v.id"
-            class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
-          >
-            <UBadge
-              v-if="v.id === history.currentVersionId"
-              color="success"
-              variant="subtle"
-              label="Current"
-            />
-            <span class="font-medium tabular">#{{ v.serial ?? '—' }}</span>
-            <span class="min-w-0 truncate text-sm text-muted">
-              {{ v.authorName ?? v.authorEmail ?? 'Unknown' }}
-            </span>
-            <span class="text-sm text-muted tabular">
-              <ClientOnly fallback="—">{{ when.format(new Date(v.createdAt)) }}</ClientOnly>
-            </span>
-            <span class="text-sm text-muted tabular">
-              <ClientOnly fallback="—">{{ bytes.format(v.sizeBytes) }}</ClientOnly>
-            </span>
+        <EmptyState
+          v-if="!history || history.versions.length === 0"
+          icon="i-lucide-history"
+          title="No Versions Yet"
+          description="Run terraform apply against this project and the first version appears here."
+        />
+
+        <div v-else class="space-y-4">
+          <div class="flex flex-wrap items-end gap-3">
+            <UFormField label="Compare" name="compare-a" class="w-44">
+              <USelect
+                v-model="compareA"
+                :items="versionOptions"
+                placeholder="Older version…"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="With" name="compare-b" class="w-44">
+              <USelect
+                v-model="compareB"
+                :items="versionOptions"
+                placeholder="Newer version…"
+                class="w-full"
+              />
+            </UFormField>
             <UButton
-              v-if="v.id !== history.currentVersionId && isAdmin"
-              class="ms-auto"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              icon="i-lucide-rotate-ccw"
-              :aria-label="`Roll back to version ${v.serial ?? v.id}`"
-              @click="pendingRollback = v"
+              :disabled="!compareA || !compareB || compareA === compareB"
+              :to="`/projects/${org}/${slug}/diff?a=${compareA}&b=${compareB}`"
+              label="View Diff"
+              icon="i-lucide-git-compare"
             />
-          </li>
-        </ol>
-      </div>
+          </div>
+
+          <ol class="space-y-2">
+            <li
+              v-for="v in history.versions"
+              :key="v.id"
+              class="[contain-intrinsic-size:auto_3.5rem] flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-default px-4 py-3 [content-visibility:auto]"
+            >
+              <UBadge
+                v-if="v.id === history.currentVersionId"
+                color="success"
+                variant="subtle"
+                label="Current"
+              />
+              <span class="font-medium tabular">#{{ v.serial ?? '—' }}</span>
+              <span class="min-w-0 truncate text-sm text-muted">
+                {{ v.authorName ?? v.authorEmail ?? 'Unknown' }}
+              </span>
+              <span class="text-sm text-muted tabular">
+                <ClientOnly fallback="—">{{ when.format(new Date(v.createdAt)) }}</ClientOnly>
+              </span>
+              <span class="text-sm text-muted tabular">
+                <ClientOnly fallback="—">{{ bytes.format(v.sizeBytes) }}</ClientOnly>
+              </span>
+              <UButton
+                v-if="v.id !== history.currentVersionId && isAdmin"
+                class="ms-auto"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                icon="i-lucide-rotate-ccw"
+                :aria-label="`Roll back to version ${v.serial ?? v.id}`"
+                @click="pendingRollback = v"
+              />
+            </li>
+          </ol>
+        </div>
+      </template>
     </template>
 
     <UModal

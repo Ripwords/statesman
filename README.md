@@ -93,6 +93,45 @@ because it removes the platform question entirely.
 
 ---
 
+## Variables
+
+Optional. statesman can also keep a project's Terraform variables (tfvars),
+encrypted at rest with the same key as state, and hand them to CI as a
+`.tfvars.json` file. Nothing changes for a project that does not use it.
+
+On the project page, open the **Variables** tab. Variables live in an
+**environment** (`staging`, `prod`, or just `default`), so one project can carry
+several sets. An admin creates the first environment with **New environment**;
+with two or more, a switcher appears.
+
+- **Add variable** takes a name, a value and a description. Values are strings
+  by default and are sent exactly as typed. Turn on **JSON** to give a number,
+  boolean, list or object instead.
+- **Edit** changes a variable. Its name cannot change.
+- **Import** takes a JSON object (`{"region": "eu-west-1"}`) or a `.tfvars`
+  file. It shows what it will create and overwrite before anything is written.
+  `.tfvars` import is not available yet; JSON works today.
+
+Variables are **sensitive** by default. A sensitive value is write-only in the
+dashboard: it is shown as `••••••`, never sent back to the browser, and an edit
+that leaves the value empty keeps the current one. Only a token with **Read
+Variables** can read it, through the download below. Anything you mark as not
+sensitive is shown in the table.
+
+Download an environment from CI with a token that has **Read Variables**:
+
+```bash
+curl -fsS -u "statesman:$STATESMAN_TOKEN" \
+  http://localhost:3000/api/vars/acme/prod/default \
+  -o statesman.auto.tfvars.json
+```
+
+Terraform loads `*.auto.tfvars.json` on its own. Add `statesman.auto.tfvars.json`
+to `.gitignore`, because the file holds the secrets.
+
+A value for which the configuration has no matching `variable` block makes
+Terraform print a warning. It does not fail the run.
+
 ## Roles, and what every account can still read
 
 There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
@@ -129,6 +168,10 @@ permissions and no ownership:
 Scoped API tokens are the finer-grained control, and they are for machines: a
 token names the exact projects and operations it may use, so a CI runner can be
 given far less than a person.
+
+Reading variables is its own permission, **Read Variables**, and it is off by
+default. Tokens created before it existed do not have it, so they cannot
+download variables; issue a new token that does.
 
 ### Passwords
 
