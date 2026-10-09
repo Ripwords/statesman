@@ -98,11 +98,12 @@ first. Both are safe to repeat:
   completes the install in the same browser, GitHub sends them back through the
   Setup URL. statesman asks GitHub whether that installation exists and
   belongs to this app, records it, audits `github.install` with the admin as
-  the actor, and lands on `/?github=connected`.
+  the actor, and lands on the project list with a **GitHub Connected** notice.
 
 **When an organisation owner has to approve the install.** If the admin is not
 an owner of the organisation, GitHub turns the install into a request. The
-admin lands on `/?github=requested`; nothing is recorded yet. Once an owner approves the request on GitHub, GitHub
+admin lands on the project list with an **Installation Requested** notice;
+nothing is recorded yet. Once an owner approves the request on GitHub, GitHub
 sends the `installation` webhook and statesman records it. Reload the
 Variables tab and the panel offers **Link repository**. The owner does not need
 a statesman account. GitHub may also send the owner to the Setup URL after

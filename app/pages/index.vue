@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { githubNotice } from '~/utils/github-notice'
+
 definePageMeta({ layout: 'dashboard' })
 useHead({ title: 'Projects · statesman' })
 
@@ -26,6 +28,18 @@ const bytes = new Intl.NumberFormat(undefined, {
   unitDisplay: 'narrow'
 })
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+// `/api/github/setup` lands here with `?github=connected` or `?github=requested`.
+// Say it once, then drop the query so a reload or a shared link does not repeat it.
+const route = useRoute()
+const toast = useToast()
+onMounted(() => {
+  const notice = githubNotice(route.query)
+  if (!notice) return
+  toast.add(notice)
+  const { github: _shown, ...rest } = route.query
+  void navigateTo({ query: rest }, { replace: true })
+})
 </script>
 
 <template>
