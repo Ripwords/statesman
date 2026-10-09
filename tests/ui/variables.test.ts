@@ -1,6 +1,9 @@
 import { testEvent } from './nitro-globals'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { generateKeyPairSync } from 'node:crypto'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { GitHubClient, type github as githubFn } from '../../server/github/client'
+import type * as ClientModule from '../../server/github/client'
 import { provisionUser, signInHeaders, setRole, resetDb, seedProject } from '../protocol/helpers'
 import { db } from '../../server/db/client'
 import { auditLog, repositoryLink } from '../../server/db/schema'
@@ -13,6 +16,18 @@ import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
 import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
+import putLink from '../../server/api/ui/environments/[id]/link.put'
+import syncNow from '../../server/api/ui/environments/[id]/sync.post'
+import unlink from '../../server/api/ui/environments/[id]/link.delete'
+import listRepositories from '../../server/api/ui/github/installations/[id]/repositories.get'
+
+// Off by default, so this deployment reads as having no GitHub App; the sweep
+// below turns it on to reach the link and sync routes.
+const fake = vi.hoisted(() => ({ client: null as unknown }))
+vi.mock('../../server/github/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof ClientModule>()),
+  github: (() => fake.client) as typeof githubFn
+}))
 
 const ORG = 'ui-variables'
 const PASSWORD = 'correct horse battery staple'
@@ -150,10 +165,68 @@ describe('variables', () => {
  * raw or sealed, nor in the audit rows the writes leave behind.
  */
 describe('sensitive values never leave through the UI', () => {
+  const INSTALLATION = 9_200_002
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' }
+  })
+  const files: Record<string, unknown> = {
+    [`/app/installations/${INSTALLATION}/access_tokens`]: {
+      token: 't',
+      expires_at: new Date(Date.now() + 3_600_000).toISOString()
+    },
+    '/installation/repositories': {
+      total_count: 1,
+      repositories: [{ id: 66, full_name: 'acme/vars', default_branch: 'main' }]
+    },
+    '/repos/acme/vars/contents/': [{ type: 'file', name: 'v.tf', path: 'v.tf' }]
+  }
+  const githubFake = new GitHubClient(
+    { id: '1', slug: 'statesman', privateKey, webhookSecret: 'x' },
+    async (input) => {
+      const path = new URL(String(input)).pathname
+      if (path === '/repos/acme/vars/commits/main') return new Response('sha-sweep')
+      if (path === '/repos/acme/vars/contents/v.tf')
+        return new Response('variable "pw" {\n  sensitive = true\n}\n')
+      if (path in files) return Response.json(files[path])
+      return Response.json({ message: 'Not Found' }, { status: 404 })
+    }
+  )
+
   it('appears in no UI response or audit row', async () => {
+    fake.client = githubFake
+    await recordInstallation(INSTALLATION, 'acme')
+    const scratch = await createEnvironment(
+      testEvent({ headers: admin, params: { id: projectId }, body: { slug: 'sweep' } })
+    )
+    await putVariable(
+      testEvent({
+        headers: admin,
+        params: { id: scratch.id, name: 'doomed' },
+        body: { value: CANARY }
+      })
+    )
     const responses = [
+      scratch,
       await listEnvironments(testEvent({ headers: admin, params: { id: projectId } })),
       await listVariables(testEvent({ headers: admin, params: { id: envId } })),
+      await putLink(
+        testEvent({
+          headers: admin,
+          params: { id: envId },
+          body: { installationId: INSTALLATION, repoId: 66 }
+        })
+      ),
+      await syncNow(testEvent({ headers: admin, params: { id: envId } })),
+      await listVariables(testEvent({ headers: admin, params: { id: envId } })),
+      await githubStatus(testEvent({ headers: admin })),
+      await listRepositories(testEvent({ headers: admin, params: { id: String(INSTALLATION) } })),
+      await unlink(testEvent({ headers: admin, params: { id: envId } })),
+      await deleteVariable(
+        testEvent({ headers: admin, params: { id: scratch.id, name: 'doomed' } })
+      ),
+      await deleteEnvironment(testEvent({ headers: admin, params: { id: scratch.id } })),
       await putVariable(
         testEvent({ headers: admin, params: { id: envId, name: 'pw' }, body: { value: CANARY } })
       ),
@@ -172,6 +245,10 @@ describe('sensitive values never leave through the UI', () => {
         })
       )
     ]
+    fake.client = null
+    // The sweep reached the routes it names, rather than each throwing early.
+    expect(responses[3]).toMatchObject({ ok: true })
+    expect(responses[6]).toMatchObject({ configured: true })
     const audit = await db().select().from(auditLog).where(eq(auditLog.projectId, projectId))
     expect(audit.length).toBeGreaterThan(0)
     const text = JSON.stringify([responses, audit])
