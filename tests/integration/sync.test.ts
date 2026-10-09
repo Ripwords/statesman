@@ -202,6 +202,18 @@ describe('syncEnvironment', () => {
     expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['old'])
   })
 
+  it('names the file once when one file declares a variable twice', async () => {
+    await link()
+    const result = await syncEnvironment(envId, {
+      client: fakeGitHub({ 'main.tf': 'variable "region" {}\nvariable "region" {}\n' }),
+      hcl
+    })
+    expect(result).toEqual({
+      ok: false,
+      error: 'variable "region" is declared twice in envs/dev/main.tf'
+    })
+  })
+
   it('does not write onto a link that changed mid-sync', async () => {
     await link()
     const relinking = fakeGitHub({ 'variables.tf': 'variable "a" {}\n' }, async () => {

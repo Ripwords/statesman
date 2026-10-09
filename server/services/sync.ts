@@ -160,7 +160,9 @@ export async function syncEnvironment(environmentId: string, deps: SyncDeps): Pr
         const first = origin.get(variable.name)
         if (first) {
           throw new SyncConflictError(
-            `variable "${variable.name}" is declared in ${first} and ${path}`
+            first === path
+              ? `variable "${variable.name}" is declared twice in ${path}`
+              : `variable "${variable.name}" is declared in ${first} and ${path}`
           )
         }
         origin.set(variable.name, path)

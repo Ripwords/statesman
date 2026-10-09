@@ -200,6 +200,7 @@ text is stored on the link, so it stays until the next successful sync.
 | `No .tf files in <directory> at <branch>.` | The directory exists but holds no `.tf` file directly inside it. When the Directory field is empty the message reads `No .tf files in the repository root at <branch>.` Check the directory, or whether the files live in a subdirectory (which is not read). |
 | `<directory> is a file, not a directory`                          | The Directory field names a file. Point it at the folder.                                                                                                   |
 | `variable "x" is declared in a.tf and b.tf`                       | Two files in the directory declare the same variable. Terraform would refuse this too. Remove one.                                                          |
+| `variable "x" is declared twice in main.tf` | One file declares the same variable twice. Terraform would refuse this too. Remove one. |
 | `<file>:<line>: syntax error`                                     | A `.tf` file does not parse. The other messages of this form, for example `attributes must be on separate lines` or `templates are not allowed in a variables file`, name the file and line in the same way. |
 | `Could not reach GitHub.` | The request to GitHub failed before an answer arrived: DNS, a firewall, or GitHub being down. Check that the server can reach `api.github.com`, then press **Sync now**. |
 | `GitHub did not answer in time.` | GitHub took longer than ten seconds to answer. Press **Sync now**. |
