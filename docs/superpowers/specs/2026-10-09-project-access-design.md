@@ -301,8 +301,8 @@ deployment admin.
 This is one extra indexed query per Terraform request, on top of the
 `verifyApiKey` lookup that already happens.
 
-**Token list:** an admin sees every token (as today). An owner sees and can
-revoke the tokens they created. Nobody else sees the tokens page.
+**Token list:** every account, admins included, sees and can revoke only the
+tokens it created. Only admins and owners can create them.
 
 ---
 

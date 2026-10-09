@@ -31,10 +31,17 @@ type Version = NonNullable<typeof history.value>['versions'][number]
 
 // `immediate` is read once, at setup, and `projects` above is already awaited
 // on both server and client — so a real project fetches its timeline during
-// SSR, and an unknown one never fires a request for `undefined`.
+// SSR. Refetch only when the id changes to another real project: refreshing the
+// list rebuilds `current`, and losing access leaves no id to ask about.
 const { data: history, refresh } = await useFetch(
   () => `/api/ui/projects/${current.value?.id}/versions`,
-  { immediate: current.value !== null, watch: [current] }
+  { immediate: current.value !== null, watch: false }
+)
+watch(
+  () => current.value?.id,
+  (id) => {
+    if (id) void refresh()
+  }
 )
 
 // The comparison lives in the URL so it can be shared and reloaded.
