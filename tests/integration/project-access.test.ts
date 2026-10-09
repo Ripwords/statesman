@@ -1,8 +1,24 @@
-import { testEvent } from '../ui/nitro-globals'
+import { isApiError, testEvent } from '../ui/nitro-globals'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client } from 'pg'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { db } from '../../server/db/client'
+import { projectAccess } from '../../server/db/schema'
+import {
+  provisionUser,
+  signInHeaders,
+  setRole,
+  resetDb,
+  seedProject,
+  grantProjectRole
+} from '../protocol/helpers'
+import {
+  requireProjectPermission,
+  effectiveRoleOfUser,
+  ensureAccessRecord
+} from '../../server/utils/project-access'
 import { ulid } from 'ulid'
 import authCatchAll from '../../server/api/auth/[...all]'
 
@@ -79,5 +95,105 @@ describe('/api/auth/organization/*', () => {
     const event = testEvent({ headers: {} })
     Object.assign(event, { path: '/api/auth/organization/add-member', method: 'POST' })
     await expect(authCatchAll(event)).rejects.toMatchObject({ statusCode: 404 })
+  })
+})
+
+const ORG = 'project-access'
+const PASSWORD = 'correct horse battery staple'
+let projectId: string
+const headers: Record<string, Record<string, string>> = {}
+
+beforeAll(async () => {
+  await resetDb(ORG)
+  projectId = await seedProject(ORG, 'p')
+  const stamp = Date.now()
+  for (const name of ['admin', 'owner', 'editor', 'viewer', 'stranger'] as const) {
+    const u = await provisionUser(`pa-${name}-${stamp}@example.com`, PASSWORD)
+    await setRole(u.id, name === 'admin' ? 'admin' : 'member')
+    if (name === 'owner' || name === 'editor' || name === 'viewer') {
+      await grantProjectRole(projectId, u.id, name)
+    }
+    headers[name] = Object.fromEntries((await signInHeaders(u.email, PASSWORD)).entries())
+  }
+})
+
+async function refusal(call: Promise<unknown>): Promise<{ status?: number; message?: string }> {
+  try {
+    await call
+    return {}
+  } catch (error) {
+    return isApiError(error) ? { status: error.statusCode, message: error.statusMessage } : {}
+  }
+}
+
+describe('requireProjectPermission', () => {
+  it('answers a stranger exactly as it answers an unknown project', async () => {
+    const stranger = await refusal(
+      requireProjectPermission(testEvent({ headers: headers.stranger }), projectId, 'project:read')
+    )
+    const unknown = await refusal(
+      requireProjectPermission(
+        testEvent({ headers: headers.stranger }),
+        'no-such-project',
+        'project:read'
+      )
+    )
+    expect(stranger).toEqual({
+      status: 404,
+      message: 'Unknown project. Check the project id and try again.'
+    })
+    expect(unknown).toEqual(stranger)
+  })
+
+  it('answers 403 naming the role needed when the role is too low', async () => {
+    expect(
+      await refusal(
+        requireProjectPermission(
+          testEvent({ headers: headers.viewer }),
+          projectId,
+          'variable:write'
+        )
+      )
+    ).toEqual({ status: 403, message: 'Needs editor access to this project. Ask a project owner.' })
+  })
+
+  it('lets an admin through with no membership row', async () => {
+    const p = await requireProjectPermission(
+      testEvent({ headers: headers.admin }),
+      projectId,
+      'member:manage'
+    )
+    expect(p.projectRole).toBe('admin')
+  })
+
+  it('returns the member role', async () => {
+    const p = await requireProjectPermission(
+      testEvent({ headers: headers.editor }),
+      projectId,
+      'variable:write'
+    )
+    expect(p.projectRole).toBe('editor')
+  })
+
+  it('answers 401 with no session, before anything else', async () => {
+    expect(
+      (await refusal(requireProjectPermission(testEvent(), 'anything', 'project:read'))).status
+    ).toBe(401)
+  })
+})
+
+describe('effectiveRoleOfUser', () => {
+  it('is null for a user id that does not exist', async () => {
+    expect(await effectiveRoleOfUser('nobody', projectId)).toBeNull()
+  })
+})
+
+describe('ensureAccessRecord', () => {
+  it('recreates a missing access record and is idempotent', async () => {
+    const p = await seedProject(ORG, 'healed')
+    await db().delete(projectAccess).where(eq(projectAccess.id, p))
+    await ensureAccessRecord(p, 'healed')
+    await ensureAccessRecord(p, 'healed')
+    expect(await db().select().from(projectAccess).where(eq(projectAccess.id, p))).toHaveLength(1)
   })
 })
