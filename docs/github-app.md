@@ -119,8 +119,8 @@ minutes, and it only works in the browser that started it.
 
 ## 5. Link a repository
 
-With an installation recorded, the same panel shows **Link repository** (admins
-only). Fill in:
+With an installation recorded, the same panel shows **Link repository** (project
+owners and admins). Fill in:
 
 - **GitHub Account**: shown only when more than one installation exists.
 - **Repository**: any repository the installation can see.

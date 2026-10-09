@@ -31,7 +31,7 @@ pnpm user:create you@example.com     # prints a generated password, once
 ```
 
 The first account is always an admin. Later ones are members unless you add
-`--role admin` — see [Roles](#roles-and-what-every-account-can-still-read).
+`--role admin` — see [Roles](#roles-and-project-access).
 
 Then sign in at http://localhost:3000 and:
 
@@ -101,7 +101,7 @@ encrypted at rest with the same key as state, and hand them to CI as a
 
 On the project page, open the **Variables** tab. Variables live in an
 **environment** (`staging`, `prod`, or just `default`), so one project can carry
-several sets. An admin creates the first environment with **New environment**;
+several sets. An owner or admin creates the first environment with **New environment**;
 with two or more, a switcher appears.
 
 - **Add variable** takes a name, a value and a description. Values are strings
@@ -136,7 +136,7 @@ Terraform print a warning. It does not fail the run.
 
 ### Finding out which variables a repository declares
 
-Also optional. An admin can link an environment to a GitHub repository from the
+Also optional. An owner or admin can link an environment to a GitHub repository from the
 Variables tab, so statesman reads the `variable` blocks in its `.tf` files and
 marks each stored variable as declared or not. A declared `description` shows
 in the table until you store one of your own; the edit form leaves it out, so
@@ -145,50 +145,87 @@ GitHub App that you register for your own deployment. Without one the tab shows
 no repository panel at all. [docs/github-app.md](docs/github-app.md) walks
 through registering it, connecting it and fixing a failed sync.
 
-## Roles, and what every account can still read
+## Roles and project access
 
 There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
 accounts exist only because an operator ran `pnpm user:create`, which needs
 database access and `BETTER_AUTH_SECRET`.
 
-There are two roles:
+There are two levels. A **deployment admin** manages the whole deployment and
+sees every project. Every other account is a **member** of the deployment and
+sees only the projects it holds a **project role** on: `viewer`, `editor` or
+`owner`. An account with no role on a project cannot tell that it exists; the
+project is absent from its list and its address answers 404.
 
-|                                            | admin | member |
-| ------------------------------------------ | ----- | ------ |
-| Read projects, versions, diffs             | yes   | yes    |
-| Create projects                            | yes   | no     |
-| Force unlock, roll back                    | yes   | no     |
-| Create and revoke tokens                   | yes   | no     |
-| Manage accounts and roles                  | yes   | no     |
-| Reset another account's password           | yes   | no     |
-| Run retention on demand                    | yes   | no     |
-| See environments, variable names, statuses | yes   | yes    |
-| See non-sensitive values                   | yes   | yes    |
-| See sensitive values                       | no    | no     |
-| Create, edit, delete variables             | yes   | no     |
-| Create, delete environments                | yes   | no     |
-| Connect GitHub, link and sync repositories | yes   | no     |
-| Create tokens with variable access         | yes   | no     |
+|                                                         | viewer | editor | owner | deployment admin |
+| ------------------------------------------------------- | ------ | ------ | ----- | ---------------- |
+| See the project in the list, read state, versions, diff | yes    | yes    | yes   | yes (all)        |
+| See environments, variable names, statuses              | yes    | yes    | yes   | yes              |
+| See non-sensitive values                                | yes    | yes    | yes   | yes              |
+| See sensitive values                                    | no     | no     | no    | no               |
+| Create, edit, delete, import variables                  | no     | yes    | yes   | yes              |
+| Sync a linked repository                                | no     | yes    | yes   | yes              |
+| Force unlock                                            | no     | yes    | yes   | yes              |
+| Create, delete environments                             | no     | no     | yes   | yes              |
+| Link / unlink a repository                              | no     | no     | yes   | yes              |
+| Roll back                                               | no     | no     | yes   | yes              |
+| Add, remove members, change their roles                 | no     | no     | yes   | yes              |
+| Create tokens scoped to this project                    | no     | no     | yes   | yes              |
+| Create projects                                         | —      | —      | —     | yes              |
+| Tokens with `all` scope                                 | —      | —      | —     | yes              |
+| Manage accounts, deployment roles, passwords            | —      | —      | —     | yes              |
+| Connect the GitHub App, run retention                   | —      | —      | —     | yes              |
+
+An account sees only projects it has a role on. Admins see every project, with
+or without a role of their own.
 
 The first account on a deployment is always an admin — nothing else could
 promote it — and every account after that is a member unless you pass
 `--role admin`. The last admin cannot be demoted, because the deployment would
-be left with nobody able to manage accounts, tokens or locks and no endpoint
-that could undo it.
+be left with nobody able to manage accounts, projects or retention and no
+endpoint that could undo it.
 
-**The split is about who may change things, not about who may see them.** Both
-roles read every project's decrypted state and every non-sensitive variable.
-Sensitive variables are readable only with a token that has variable access.
-There are still no per-project permissions and no ownership:
+> Sensitive variables are write-only in the dashboard for every role, admins
+> included. Only a token with **Read Variables** can read them.
 
-> Creating an account of either role grants read access to the **plaintext** of
-> every state file in the deployment, including the provider credentials and
-> database passwords inside them. If some people should see only some projects,
-> run a second deployment; do not give them an account here.
+### Adding people
 
-Scoped API tokens are the finer-grained control, and they are for machines: a
-token names the exact projects and operations it may use, so a CI runner can be
-given far less than a person.
+1. An admin creates the account: `pnpm user:create them@example.com`.
+2. An owner of the project, or an admin, opens the project's **Members** tab,
+   chooses **Add Member**, enters the account's email and a role.
+
+Owners must type the exact email of an existing account; there is no directory
+to browse, and an unknown email is refused. Anyone with a role on the project
+can see its member list. On the same tab an owner changes a member's role from
+the role select on their row, or removes them. A project may end up with no
+owner; an admin can always recover it, and the dashboard warns before the last
+owner is removed. **Users** shows each account's project count in its
+**Projects** column.
+
+### Upgrading
+
+Existing member accounts become viewers on every existing project, so nobody
+loses access. Narrow it from each project's **Members** tab.
+
+### Tokens
+
+Scoped API tokens are for machines: a token names the exact projects and
+operations it may use, so a CI runner can be given far less than a person.
+
+- **Creating** a token needs a deployment admin, or an account that is an owner
+  of every project the token names. A token with `all` scope (**All My
+  Projects**) is admin-only.
+- **Listing and revoking:** any signed-in account sees the tokens it created on
+  the Tokens page and can revoke them. Admins see every token. The Tokens entry
+  in the navigation shows for admins, project owners and anyone who already
+  holds a token.
+- **A token never outranks its creator.** It stops working on a project when
+  its creator no longer holds the role the request needs: reading state needs
+  any role; writing, locking or deleting state needs editor; reading variables
+  needs owner. The request is refused with a 403 saying the creating account no
+  longer has access. The token is not revoked, and it works again if the
+  creator's role is restored. An `all`-scope token works only while its creator
+  is an admin.
 
 Reading variables is its own permission, **Read Variables**, and it is off by
 default. Tokens created before it existed do not have it, so they cannot

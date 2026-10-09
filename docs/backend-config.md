@@ -81,13 +81,10 @@ container without handing it the key that decrypts state. Pass
 print it once. The first account on a deployment is always an admin; later ones
 default to `member`.
 
-**Every account sees every project, whichever role it holds.** The admin/member
-split decides who may change things — projects, tokens, locks, history,
-accounts — not who may see them. There is no ownership and there are no
-per-project permissions, because one deployment serves one organization, so an
-account of either role is read access to the plaintext of every state file in
-the deployment. Scoped API tokens, below, are the finer-grained control, and
-they are for machines rather than people.
+An account sees only the projects it holds a role on (`viewer`, `editor` or
+`owner`); deployment admins see every project. Owners add people on a project's
+**Members** tab. The full role table is in the
+[README](../README.md#roles-and-project-access).
 
 ---
 
@@ -135,12 +132,31 @@ and is the only kill switch — there is no reversible disable.
 |---|---|
 | Allowed operations | `read`, `write`, `delete`, `lock`. A `plan` needs read and lock; an `apply` needs write too. May be left empty for a variables-only token, but at least one permission, here or under Variables, must be granted |
 | Variables | *Read Variables* lets the token download the project's variables as a tfvars file, sensitive values included |
-| Project scope | *Scoped* (recommended) lists exact `org/project` pairs; *account-wide* covers every project the owner can reach |
+| Project scope | **Specific Projects** (recommended) lists exact `org/project` pairs, and you must own every one (admins may name any). **All My Projects** covers every project and is admin-only |
 | Expiry | Optional, up to 3650 days |
 | Rate limit | Defaults to 120 requests/minute per key. One `apply` costs roughly 4–6 requests and a `plan` about 3 |
 
 Scope matching is exact string equality on `org/project`, never a prefix test —
 a token for `acme/prod` cannot reach `acme/prod-2`.
+
+**Who can create, list and revoke.** Creating a token needs a deployment admin,
+or the owner of every project the token names. Any signed-in account can see and
+revoke the tokens it created on the Tokens page; admins see all of them. The
+Tokens entry in the navigation shows for admins, project owners and anyone who
+already holds a token.
+
+**A token never outranks its creator.** It stops working on a project when its
+creator no longer holds the role the request needs, and the request gets a 403
+("The account that created this token no longer has access to org/project"):
+
+| Token action | Creator needs |
+|---|---|
+| Read state | any role on the project |
+| Write, lock or delete state | editor or owner |
+| Read variables | owner |
+
+The token is not revoked, and it works again if the creator's role is restored.
+An `all`-scope token works only while its creator is a deployment admin.
 
 ---
 
@@ -149,7 +165,7 @@ a token for `acme/prod` cannot reach `acme/prod-2`.
 | Condition | Status | What Terraform does |
 |---|---|---|
 | Missing or malformed credentials | 401 | fails, reports an auth error |
-| Valid token, project out of scope or action not permitted | 403 | fails |
+| Valid token, project out of scope, action not permitted, or its creator lost the needed role | 403 | fails |
 | Unknown project | 404 | fails |
 | No state stored yet | 404 | treats it as "no state", which is normal on a first run |
 | Write whose `?ID=` does not match the held lock | 409 | fails |

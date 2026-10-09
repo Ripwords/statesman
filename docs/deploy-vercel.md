@@ -83,7 +83,9 @@ Two consequences worth knowing before you rely on it:
 > it, every account already had every power the dashboard offers, and defaulting
 > them to `member` would demote your whole team at once with no admin left to
 > undo it. After deploying, open **Users** and demote whoever should be a
-> member. New accounts default to `member` from then on.
+> member. New accounts default to `member` from then on. The project-access
+> migration then makes every non-admin account a viewer on every existing
+> project, so nobody loses access; narrow it from each project's **Members** tab.
 
 
 ## 4. Seed the organization
@@ -143,10 +145,10 @@ DATABASE_URL='postgres://...' BETTER_AUTH_SECRET='...' \
 The first account is always an admin; later ones are members unless you add
 `--role admin`.
 
-> **Every account you create can read every project**, whichever role it has,
-> including the decrypted plaintext of every state file. The admin/member split
-> governs who may CHANGE things, not who may see them, and there are still no
-> per-project permissions — see the README.
+> **An account sees only the projects it holds a role on**; admins see every
+> project. After creating an account, add it to a project from the project's
+> **Members** tab. See the README's
+> [Roles and project access](../README.md#roles-and-project-access).
 
 Then sign in at your domain, mint a token on the **Tokens** page, and:
 
