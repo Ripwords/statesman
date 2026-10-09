@@ -9,6 +9,7 @@ const { data: projects } = await useFetch('/api/ui/projects')
 const state = reactive<Partial<TokenConfig>>({
   name: undefined,
   actions: ['read', 'write', 'lock'],
+  varActions: [],
   scope: { kind: 'projects', projects: [] },
   expiresInDays: 90
 })
@@ -36,6 +37,13 @@ const limitRate = ref(false)
 watch(limitRate, (on) => {
   state.rateLimitMax = on ? 60 : undefined
   state.rateLimitWindowSeconds = on ? 60 : undefined
+})
+
+const readVariables = computed<boolean>({
+  get: () => (state.varActions ?? []).includes('read'),
+  set: (on) => {
+    state.varActions = on ? ['read'] : []
+  }
 })
 
 const actionOptions: { label: string; value: StateAction; description: string }[] = [
@@ -101,8 +109,16 @@ function onError(event: FormErrorEvent) {
       />
     </UFormField>
 
-    <UFormField label="Allowed Operations" name="actions" required>
+    <UFormField label="Allowed Operations" name="actions">
       <UCheckboxGroup v-model="state.actions" :items="actionOptions" />
+    </UFormField>
+
+    <UFormField
+      label="Variables"
+      name="varActions"
+      description="Lets this token download the project's variables as a tfvars file. Sensitive values included."
+    >
+      <UCheckbox v-model="readVariables" label="Read Variables" />
     </UFormField>
 
     <UFormField label="Project Scope" name="scope">

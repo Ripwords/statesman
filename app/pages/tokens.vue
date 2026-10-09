@@ -114,6 +114,12 @@ function onCreated(token: { id: string; key: string; name: string }) {
           unreachable, so it stated a capability that does not exist. Revoking is
           the kill switch, it is immediate, and it is the button on the right.
         -->
+          <UBadge
+            v-if="t.varActions.includes('read')"
+            color="neutral"
+            variant="subtle"
+            label="variables: read"
+          />
           <span class="text-sm text-muted">{{ scopeLabel(t) }}</span>
           <span class="text-sm text-muted tabular">
             {{ t.rateLimitMax ?? 120 }}/{{ Math.round((t.rateLimitTimeWindow ?? 60_000) / 1000) }}s
