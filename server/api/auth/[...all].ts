@@ -1,16 +1,20 @@
 import { auth } from '../../utils/auth'
+import { isBlockedAuthPath } from '../../utils/blocked-auth-paths'
 
 /**
- * The organization plugin's endpoints check authority against plugin
- * membership alone, which would refuse a deployment admin who is not a member
- * and would let an owner act outside statesman's audit. Member management goes
- * through /api/ui/projects/:id/members only (project-access spec §6).
+ * Better Auth's HTTP surface, minus the plugin endpoints statesman replaces
+ * with its own doors (see server/utils/blocked-auth-paths.ts).
+ *
+ * The block is decided on the web Request handed to Better Auth, not on
+ * `event.path`: better-call routes on `new URL(request.url).pathname`, which
+ * resolves `/%2e/` and `/x/../`, so a raw-path check is one dot-segment away
+ * from being bypassed. `disabledPaths` in server/utils/auth.ts refuses the same
+ * endpoints inside Better Auth as a second line.
  */
-const BLOCKED = '/api/auth/organization/'
-
 export default defineEventHandler(async (event) => {
-  if (event.path.startsWith(BLOCKED)) {
+  const request = toWebRequest(event)
+  if (isBlockedAuthPath(request.url)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
-  return auth.handler(toWebRequest(event))
+  return auth.handler(request)
 })

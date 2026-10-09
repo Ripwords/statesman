@@ -2,7 +2,7 @@ import { isApiError, testEvent } from '../ui/nitro-globals'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client } from 'pg'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
 import { projectAccess, projectMember } from '../../server/db/schema'
@@ -22,6 +22,10 @@ import {
 } from '../../server/utils/project-access'
 import { ulid } from 'ulid'
 import authCatchAll from '../../server/api/auth/[...all]'
+import { auth } from '../../server/utils/auth'
+import * as h3 from 'h3'
+import { createServer, type Server } from 'node:http'
+import { connect, type AddressInfo } from 'node:net'
 
 /**
  * The backfill runs against scratch copies of the tables in a private schema,
@@ -100,11 +104,85 @@ describe('migration backfill', () => {
   })
 })
 
-describe('/api/auth/organization/*', () => {
-  it('answers 404 so the plugin endpoints are not a second door', async () => {
-    const event = testEvent({ headers: {} })
-    Object.assign(event, { path: '/api/auth/organization/add-member', method: 'POST' })
-    await expect(authCatchAll(event)).rejects.toMatchObject({ statusCode: 404 })
+/**
+ * The catch-all is driven through real h3, over a raw socket, so the request
+ * target reaches the server exactly as written: fetch and `new URL` would
+ * resolve the dot-segments before the request ever left the test.
+ */
+describe('/api/auth plugin endpoints that statesman replaces', () => {
+  let port: number
+  let server: Server
+
+  beforeAll(async () => {
+    Object.assign(globalThis, { toWebRequest: h3.toWebRequest })
+    const app = h3.createApp()
+    // Mounted on a router, as Nitro mounts the file route: `app.use(prefix)`
+    // would strip the prefix from event.path.
+    const router = h3.createRouter()
+    router.use('/api/auth/**', h3.defineEventHandler(authCatchAll))
+    app.use(router)
+    server = createServer(h3.toNodeListener(app))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    port = (server.address() as AddressInfo).port
+  })
+
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())))
+
+  function rawPost(target: string): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = connect(port, '127.0.0.1', () => {
+        socket.write(
+          `POST ${target} HTTP/1.1\r\nHost: localhost:3000\r\nContent-Type: application/json\r\n` +
+            `Content-Length: 2\r\nConnection: close\r\n\r\n{}`
+        )
+      })
+      let data = ''
+      socket.on('data', (chunk) => (data += chunk))
+      socket.on('end', () => {
+        const [head = '', body = ''] = data.split('\r\n\r\n')
+        resolve({ status: Number(head.split(' ')[1]), body })
+      })
+      socket.on('error', reject)
+    })
+  }
+
+  it.each([
+    '/api/auth/organization/update-member-role',
+    '/api/auth/./organization/update-member-role',
+    '/api/auth/%2e/organization/update-member-role',
+    '/api/auth/%2E/organization/leave',
+    '/api/auth/x/../organization/update-member-role',
+    '/api/auth/x/%2e%2e/organization/check-slug',
+    '/api/auth/x\\..\\organization/update-member-role',
+    '/api/auth/api-key/create',
+    '/api/auth/%2e/api-key/create',
+    '/api/auth/x/../api-key/update'
+  ])('answers 404 for %s', async (target) => {
+    const res = await rawPost(target)
+    expect(res.status).toBe(404)
+  })
+
+  it('still routes everything else to Better Auth', async () => {
+    const res = await rawPost('/api/auth/sign-in/email')
+    // 400 from the plugin's body validation, not 404 from the block.
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses dot-segment spellings inside Better Auth too (disabledPaths)', async () => {
+    for (const path of [
+      '/api/auth/%2e/organization/update-member-role',
+      '/api/auth/x/../api-key/create',
+      '/api/auth/./api-key/update'
+    ]) {
+      const res = await auth.handler(
+        new Request(`http://localhost:3000${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}'
+        })
+      )
+      expect(res.status).toBe(404)
+    }
   })
 })
 

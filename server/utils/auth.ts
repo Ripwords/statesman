@@ -7,6 +7,7 @@ import { db } from '../db/client'
 import { schema } from '../db/schema'
 import { env } from './env'
 import { projectAc, projectRoles } from './project-access'
+import { BLOCKED_AUTH_PATHS, BLOCKED_AUTH_PREFIXES } from './blocked-auth-paths'
 
 /**
  * What the two roles may do, in the admin plugin's own vocabulary.
@@ -33,6 +34,40 @@ const adminRole = ac.newRole({
 
 const memberRole = ac.newRole({})
 
+// Per-project roles (project-access spec). A Better Auth "organization" is a
+// statesman PROJECT here. Nothing in the browser reaches the plugin's own
+// endpoints — api/auth/[...all].ts answers 404 for them — so these options
+// describe the data, and server/utils/project-access.ts is the door.
+const projectsPlugin = organization({
+  ac: projectAc,
+  roles: projectRoles,
+  creatorRole: 'owner',
+  allowUserToCreateOrganization: false,
+  schema: {
+    organization: { modelName: 'projectAccess' },
+    member: { modelName: 'projectMember' },
+    invitation: { modelName: 'projectInvitation' }
+  }
+})
+
+/**
+ * The same endpoints the catch-all refuses, refused again inside Better Auth.
+ *
+ * Better Auth checks `disabledPaths` in its router's onRequest, against the
+ * resolved pathname, so dot-segment spellings match too. It is never consulted
+ * for server-side `auth.api.*` calls, which is how statesman's own token routes
+ * still reach `createApiKey`. Endpoints without a path are server-only already.
+ */
+const disabledPaths = [
+  ...Object.values(projectsPlugin.endpoints)
+    .map((endpoint) => endpoint.path)
+    .filter(
+      (path): path is string =>
+        typeof path === 'string' && BLOCKED_AUTH_PREFIXES.some((p) => path.startsWith(`${p}/`))
+    ),
+  ...BLOCKED_AUTH_PATHS
+]
+
 export const auth = betterAuth({
   secret: env().BETTER_AUTH_SECRET,
   baseURL: env().BETTER_AUTH_URL,
@@ -45,6 +80,7 @@ export const auth = betterAuth({
   // Accounts are created by the operator with `pnpm user:create`, which needs
   // database access and the auth secret.
   emailAndPassword: { enabled: true, disableSignUp: true },
+  disabledPaths,
   user: {
     additionalFields: {
       /**
@@ -76,21 +112,7 @@ export const auth = betterAuth({
       // runtime behaviour. Neither is a foundation for an authorization check.
       roles: { admin: adminRole, member: memberRole }
     }),
-    // Per-project roles (project-access spec). A Better Auth "organization" is
-    // a statesman PROJECT here. Nothing in the browser reaches the plugin's own
-    // endpoints — api/auth/[...all].ts answers 404 for them — so these options
-    // describe the data, and server/utils/project-access.ts is the door.
-    organization({
-      ac: projectAc,
-      roles: projectRoles,
-      creatorRole: 'owner',
-      allowUserToCreateOrganization: false,
-      schema: {
-        organization: { modelName: 'projectAccess' },
-        member: { modelName: 'projectMember' },
-        invitation: { modelName: 'projectInvitation' }
-      }
-    }),
+    projectsPlugin,
     apiKey({
       defaultPrefix: 'sm_',
       // Project scope rides in metadata; the plugin has no resource-instance
