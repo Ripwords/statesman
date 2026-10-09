@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import { statusMessageOf } from '~/utils/status-message'
+import { relativeTime } from '~/utils/relative-time'
 import { formatValue } from '~/utils/variable-value'
 
 const props = defineProps<{ projectId: string }>()
@@ -66,20 +67,6 @@ const statusColor = {
   optional: 'neutral',
   undeclared: 'warning'
 } as const
-
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
-function relativeTime(iso: string): string {
-  const seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000)
-  const steps: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ['day', 86400],
-    ['hour', 3600],
-    ['minute', 60]
-  ]
-  for (const [unit, size] of steps) {
-    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit)
-  }
-  return relative.format(seconds, 'second')
-}
 
 const createEnvOpen = ref(false)
 const editOpen = ref(false)
@@ -206,6 +193,13 @@ const curl = computed(
           </div>
         </AdminOnly>
       </div>
+
+      <RepositoryPanel
+        v-if="envId"
+        :environment-id="envId"
+        :link="variables?.link ?? null"
+        @changed="refreshVariables()"
+      />
 
       <UAlert
         v-if="variablesError"
