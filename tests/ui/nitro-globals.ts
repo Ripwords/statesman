@@ -9,6 +9,8 @@
  * evaluates a module's dependencies in declaration order, so a plain
  * `import './nitro-globals'` on the first line is enough.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { H3Event } from 'h3'
 
 export type ApiError = Error & {
@@ -59,7 +61,10 @@ Object.assign(globalThis, {
   getValidatedRouterParams: <T>(event: H3Event, validator: Validator<T>) =>
     runValidator(contextOf(event).params, validator),
   readValidatedBody: <T>(event: H3Event, validator: Validator<T>) =>
-    runValidator(contextOf(event).body, validator)
+    runValidator(contextOf(event).body, validator),
+  useStorage: (_base: string) => ({
+    getItemRaw: async (key: string) => readFileSync(join('server/assets', key.replaceAll(':', '/')))
+  })
 })
 
 export type TestEventInit = {

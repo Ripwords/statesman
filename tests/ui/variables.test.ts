@@ -113,12 +113,24 @@ describe('variables', () => {
     expect(preview).toEqual({ created: ['fresh'], overwritten: ['region'] })
   })
 
-  it('refuses an hcl import with a clear 400', async () => {
+  it('imports HCL and reports an expression with its line', async () => {
+    const preview = await importVariables(
+      testEvent({
+        headers: admin,
+        params: { id: envId },
+        body: { hcl: 'zone = "a"\n', dryRun: true }
+      })
+    )
+    expect(preview.created).toContain('zone')
     await expect(
       importVariables(
-        testEvent({ headers: admin, params: { id: envId }, body: { hcl: 'a = 1', dryRun: true } })
+        testEvent({
+          headers: admin,
+          params: { id: envId },
+          body: { hcl: 'a = 1\nb = var.x\n', dryRun: true }
+        })
       )
-    ).rejects.toMatchObject({ statusCode: 400, statusMessage: 'HCL import is not available yet.' })
+    ).rejects.toMatchObject({ statusCode: 400, statusMessage: expect.stringContaining('tfvars:2') })
   })
 })
 
