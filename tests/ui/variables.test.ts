@@ -3,10 +3,12 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { provisionUser, signInHeaders, setRole, resetDb, seedProject } from '../protocol/helpers'
 import { db } from '../../server/db/client'
-import { auditLog } from '../../server/db/schema'
+import { auditLog, repositoryLink } from '../../server/db/schema'
 import listEnvironments from '../../server/api/ui/projects/[id]/environments.get'
 import createEnvironment from '../../server/api/ui/projects/[id]/environments.post'
 import deleteEnvironment from '../../server/api/ui/environments/[id].delete'
+import githubStatus from '../../server/api/ui/github.get'
+import { recordInstallation, linkRepository } from '../../server/services/sync'
 import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
@@ -167,5 +169,47 @@ describe('sensitive values never leave through the UI', () => {
     const text = JSON.stringify([responses, audit])
     expect(text).not.toContain(CANARY)
     expect(text).not.toContain(Buffer.from(CANARY).toString('base64'))
+  })
+})
+
+describe('github status and declared variables', () => {
+  it('reports GitHub as not configured', async () => {
+    expect(await githubStatus(testEvent({ headers: member }))).toEqual({
+      configured: false,
+      installUrl: null,
+      installations: []
+    })
+  })
+
+  it('merges a synced declared set into the variables rows', async () => {
+    await recordInstallation(9_200_001, 'acme')
+    await linkRepository({
+      environmentId: envId,
+      installationId: 9_200_001,
+      repoId: 77,
+      repoFullName: 'acme/infra',
+      ref: 'main',
+      directory: ''
+    })
+    await db()
+      .update(repositoryLink)
+      .set({
+        declared: [
+          {
+            name: 'needed',
+            typeExpr: 'string',
+            hasDefault: false,
+            sensitive: false,
+            description: null,
+            file: 'v.tf',
+            line: 1
+          }
+        ],
+        lastSyncedSha: 'abc'
+      })
+      .where(eq(repositoryLink.environmentId, envId))
+    const body = await listVariables(testEvent({ headers: member, params: { id: envId } }))
+    expect(body.link).toMatchObject({ repoFullName: 'acme/infra', lastSyncedSha: 'abc' })
+    expect(body.rows[0]).toMatchObject({ name: 'needed', status: 'missing' })
   })
 })

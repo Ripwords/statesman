@@ -17,6 +17,12 @@ import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
 import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
+import githubInstall from '../../server/api/github/install.get'
+import githubStatus from '../../server/api/ui/github.get'
+import listRepos from '../../server/api/ui/github/installations/[id]/repositories.get'
+import putLink from '../../server/api/ui/environments/[id]/link.put'
+import deleteLink from '../../server/api/ui/environments/[id]/link.delete'
+import syncNow from '../../server/api/ui/environments/[id]/sync.post'
 import rollback from '../../server/api/admin/rollback.post'
 import retention from '../../server/api/admin/retention.post'
 
@@ -79,6 +85,23 @@ const ADMIN_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<
     'POST /api/ui/environments/:id/variables/import',
     (h) => importVariables(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
   ],
+  ['GET /api/github/install', (h) => githubInstall(testEvent({ headers: h }))],
+  [
+    'GET /api/ui/github/installations/:id/repositories',
+    (h) => listRepos(testEvent({ headers: h, params: { id: '1' } }))
+  ],
+  [
+    'PUT /api/ui/environments/:id/link',
+    (h) => putLink(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
+  ],
+  [
+    'DELETE /api/ui/environments/:id/link',
+    (h) => deleteLink(testEvent({ headers: h, params: { id: 'e1' } }))
+  ],
+  [
+    'POST /api/ui/environments/:id/sync',
+    (h) => syncNow(testEvent({ headers: h, params: { id: 'e1' } }))
+  ],
   ['POST /api/admin/rollback', (h) => rollback(testEvent({ headers: h, body: {} }))],
   ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h }))]
 ]
@@ -122,7 +145,8 @@ const READ_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<u
   [
     'GET /api/ui/environments/:id/variables',
     (h) => listVariables(testEvent({ headers: h, params: { id: 'e1' } }))
-  ]
+  ],
+  ['GET /api/ui/github', (h) => githubStatus(testEvent({ headers: h }))]
 ]
 
 describe.each(READ_ROUTES)('%s', (_name, call) => {
