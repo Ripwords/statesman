@@ -38,12 +38,13 @@ Use your organisation's settings instead if the repositories belong to one.
 Leave **Redirect on update** unticked. statesman's setup callback only accepts a
 redirect it started itself (it checks a state cookie), so a redirect that GitHub
 initiates after an update would land on the `The install link expired or did not
-start here. Try Connect GitHub again.` error. Repository changes still reach
-statesman through webhooks.
+start here. Try Connect GitHub again.` error. Installation and repository
+changes still reach statesman through webhooks.
 
 Keep the webhook secret: it becomes `GITHUB_APP_WEBHOOK_SECRET`. GitHub also
 delivers `installation` and `installation_repositories` events to every app
 without a subscription, and statesman handles them (see
+[Connect GitHub](#4-connect-github) and
 [Uninstalling and revoking access](#uninstalling-and-revoking-access)).
 
 ## 2. Generate the private key
@@ -76,18 +77,41 @@ Empty values count as unset. Restart the server after changing them.
 
 ## 4. Connect GitHub
 
+A deployment connects **one** GitHub account: the app is registered with
+**Only on this account**, so it can be installed on the user or organisation
+that owns it and nowhere else.
+
 An admin opens a project's **Variables** tab. The repository panel shows
 **Connect GitHub** while no installation is recorded. It sends the browser to
-GitHub to install the app on an account and choose which repositories it may
-see. GitHub then redirects back through the Setup URL, and statesman asks GitHub
-whether that installation exists and belongs to this app before it records it.
-The browser lands on:
+GitHub to install the app and choose which repositories it may see.
 
-- `/?github=connected` when the install completed.
-- `/?github=requested` when you are not an owner of the organisation and an
-  owner has to approve the install first. Nothing is recorded yet. statesman
-  records an installation only when GitHub redirects to the Setup URL, so once
-  an owner has approved, an admin should press **Connect GitHub** again.
+statesman records the installation in either of two ways, whichever arrives
+first. Both are safe to repeat:
+
+- **The `installation` webhook.** GitHub sends it to the Webhook URL when the
+  app is installed (`created`), unsuspended (`unsuspend`), or when an owner
+  accepts new permissions (`new_permissions_accepted`). The delivery is signed
+  with the webhook secret, so it needs no session. statesman records the
+  installation and its account name, and writes `github.install` to the audit
+  log the first time.
+- **The Setup URL redirect.** When the admin who pressed **Connect GitHub**
+  completes the install in the same browser, GitHub sends them back through the
+  Setup URL. statesman asks GitHub whether that installation exists and
+  belongs to this app, records it, audits `github.install` with the admin as
+  the actor, and lands on `/?github=connected`.
+
+**When an organisation owner has to approve the install.** If the admin is not
+an owner of the organisation, GitHub turns the install into a request. The
+admin lands on `/?github=requested`; nothing is recorded yet. Once an owner approves the request on GitHub, GitHub
+sends the `installation` webhook and statesman records it. Reload the
+Variables tab and the panel offers **Link repository**. The owner does not need
+a statesman account. GitHub may also send the owner to the Setup URL after
+approving; without a statesman session that page answers `Sign in required`,
+which is harmless, because the webhook has already done the work.
+
+If the panel still shows **Connect GitHub** after an approval, the webhook did
+not arrive. Open the app's **Advanced → Recent Deliveries** page, find the
+`installation` delivery and redeliver it (see [Verify it](#7-verify-it)).
 
 The button asks for a fresh install link each time. The link expires after ten
 minutes, and it only works in the browser that started it.

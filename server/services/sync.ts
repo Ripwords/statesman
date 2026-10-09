@@ -17,14 +17,27 @@ export function normaliseDirectory(input: string): string {
   return parts.join('/')
 }
 
+/**
+ * Idempotent: the Setup URL redirect and the `installation` webhook may both
+ * report one install. True only when the row is new, so a redelivery is not
+ * audited twice. Two statements, but no race to guard: whichever insert wins,
+ * the row exists and the update only refreshes the account name.
+ */
 export async function recordInstallation(
   installationId: number,
   accountLogin: string
-): Promise<void> {
-  await db()
+): Promise<boolean> {
+  const inserted = await db()
     .insert(githubInstallation)
     .values({ installationId, accountLogin })
-    .onConflictDoUpdate({ target: githubInstallation.installationId, set: { accountLogin } })
+    .onConflictDoNothing({ target: githubInstallation.installationId })
+    .returning()
+  if (inserted.length > 0) return true
+  await db()
+    .update(githubInstallation)
+    .set({ accountLogin })
+    .where(eq(githubInstallation.installationId, installationId))
+  return false
 }
 
 /** True when a row was removed, so a replayed delivery can be told from a real uninstall. */

@@ -18,16 +18,21 @@ export default defineEventHandler(async (event) => {
     {
       secret: env().GITHUB_APP?.webhookSecret ?? '',
       sync: { client, hcl: await hcl() },
-      // The uninstall is already committed; failing to find the org must not turn it into a 500 GitHub retries.
-      audit: async () => {
+      // The change is already committed; failing to find the org must not turn it into a 500 GitHub retries.
+      audit: async (change) => {
         try {
           await recordAuditBestEffort({
             orgId: await deploymentOrgId(),
             actorType: 'user',
-            action: 'github.uninstall'
+            ...(change.action === 'install'
+              ? {
+                  action: 'github.install',
+                  meta: { installationId: change.installationId, account: change.account }
+                }
+              : { action: 'github.uninstall' })
           })
         } catch (error) {
-          console.error('Could not audit the GitHub uninstall', error)
+          console.error(`Could not audit the GitHub ${change.action}`, error)
         }
       }
     }

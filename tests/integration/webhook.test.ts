@@ -8,15 +8,21 @@ import { db } from '../../server/db/client'
 import { githubInstallation } from '../../server/db/schema'
 import { resetDb, seedProject } from '../protocol/helpers'
 import { createEnvironment } from '../../server/services/variables'
-import { recordInstallation, linkRepository, linkSummary } from '../../server/services/sync'
-import { handleWebhook } from '../../server/github/webhook'
+import {
+  recordInstallation,
+  linkRepository,
+  linkSummary,
+  listInstallations
+} from '../../server/services/sync'
+import { handleWebhook, type AuditEvent } from '../../server/github/webhook'
 import { GitHubClient } from '../../server/github/client'
 import { createHclToolkit, type HclToolkit } from '../../server/hcl/toolkit'
 
 void testEvent
 
 const ORG = 'webhook'
-const INSTALLATION = 9_300_001
+// Distinct from every other suite's ids: the files share one database and run in parallel.
+const INSTALLATION = 9_400_001
 const SECRET = 'whsec'
 const pem = generateKeyPairSync('rsa', { modulusLength: 2048 })
   .privateKey.export({ type: 'pkcs1', format: 'pem' })
@@ -45,7 +51,12 @@ const client = new GitHubClient(
   }
 )
 
-const deliver = (event: string, payload: unknown, secret = SECRET, audit?: () => Promise<void>) => {
+const deliver = (
+  event: string,
+  payload: unknown,
+  secret = SECRET,
+  audit?: (event: AuditEvent) => Promise<void>
+) => {
   const rawBody = Buffer.from(JSON.stringify(payload))
   const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
   return handleWebhook(
@@ -214,5 +225,51 @@ describe('handleWebhook', () => {
     })
     expect(result).toEqual({ status: 202, synced: [envId] })
     expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['from_push'])
+  })
+
+  describe('records an installation GitHub reports', () => {
+    const NEW = 9_400_003
+    const body = (action: string, login = 'acme-org') => ({
+      action,
+      installation: { id: NEW, account: { login } }
+    })
+    const recorded = async () => (await listInstallations()).filter((i) => i.installationId === NEW)
+
+    beforeEach(async () => {
+      await db().delete(githubInstallation).where(eq(githubInstallation.installationId, NEW))
+    })
+
+    // An org owner approving a requested install has no statesman session, so
+    // the Setup URL redirect cannot record it; the webhook is the only path.
+    it.each(['created', 'unsuspend', 'new_permissions_accepted'])(
+      'on %s, and audits it once',
+      async (action) => {
+        const events: AuditEvent[] = []
+        const audit = async (event: AuditEvent) => {
+          events.push(event)
+        }
+        expect((await deliver('installation', body(action), SECRET, audit)).status).toBe(202)
+        await deliver('installation', body(action), SECRET, audit)
+        expect(await recorded()).toEqual([{ installationId: NEW, accountLogin: 'acme-org' }])
+        expect(events).toEqual([{ action: 'install', installationId: NEW, account: 'acme-org' }])
+      }
+    )
+
+    it('follows an account rename on a repeated delivery', async () => {
+      await deliver('installation', body('created'))
+      await deliver('installation', body('new_permissions_accepted', 'acme-renamed'))
+      expect(await recorded()).toEqual([{ installationId: NEW, accountLogin: 'acme-renamed' }])
+    })
+
+    it('records nothing for an unsigned delivery or one without an account', async () => {
+      await deliver('installation', body('created'), 'wrong')
+      await deliver('installation', { action: 'created', installation: { id: NEW } })
+      expect(await recorded()).toEqual([])
+    })
+
+    it('records nothing for other actions', async () => {
+      await deliver('installation', body('suspend'))
+      expect(await recorded()).toEqual([])
+    })
   })
 })
