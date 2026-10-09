@@ -42,6 +42,9 @@ importers:
       ulid:
         specifier: ^3.0.2
         version: 3.0.2
+      web-tree-sitter:
+        specifier: 0.27.1
+        version: 0.27.1
       zod:
         specifier: 4.5.4
         version: 4.5.4
@@ -49,6 +52,9 @@ importers:
       '@nuxt/test-utils':
         specifier: ^4.2.0
         version: 4.2.0(esbuild@0.28.2)(magicast@0.5.4)(playwright-core@1.62.1)(rolldown@1.2.7)(rollup@4.63.1)(typescript@5.9.3)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11)
+      '@tree-sitter-grammars/tree-sitter-hcl':
+        specifier: 1.2.0
+        version: 1.2.0
       '@types/node':
         specifier: ^26.4.1
         version: 26.4.1
@@ -1118,8 +1124,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@nuxt/cli@4.0.0-alpha.0':
-    resolution: {integrity: sha512-dz0lVDA8o+1LD+bscjQvK7cnYeVtSzxpStrmVToAsRDi91T7t58iWmZe25kqVLKaaI3y1BGf9HB4FSrfDN252A==}
+  '@nuxt/cli@4.0.0-alpha.1':
+    resolution: {integrity: sha512-AmW+ke8n9R86Y2ntnNNXIBNpH5WeY9k7EvE0FbM5QV15mfYthJuODGIVLDTMKd+Qxws+Cn5whTCImiJr1G93rA==}
     engines: {node: ^22.19.0 || ^24.11.0 || >=26.0.0}
     hasBin: true
     peerDependencies:
@@ -2295,6 +2301,14 @@ packages:
       y-protocols: ^1.0.1
       yjs: ^13.5.38
 
+  '@tree-sitter-grammars/tree-sitter-hcl@1.2.0':
+    resolution: {integrity: sha512-2bVnOojkkdMLevp0G4v3ksbNoOQFc/Pt9GAdWX4i3aykVyI+CkktE1hsF/XAeUQFjwgGrVZnEyeCll5oD7Ibfg==}
+    peerDependencies:
+      tree-sitter: ^0.25.0
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -2868,8 +2882,8 @@ packages:
   citty@0.2.2:
     resolution: {integrity: sha512-+6vJA3L98yv+IdfKGZHBNiGW5KHn22e/JwID0Strsz8h4S/csAu/OuICwxrg44k5MRiZHWIo8XXuJgQTriRP4w==}
 
-  clickable-path@0.0.1:
-    resolution: {integrity: sha512-PkJJGbxFRoWoxyYImJPPyd/RW+aVe0HQVBPhbp2KUaYZdpVNcIopUcE9UmCNAwdbj9frP5SzundqaePJF4ZWrw==}
+  clickable-path@0.1.1:
+    resolution: {integrity: sha512-ROn/mdV2pR8WFdpJjFDCSouLRg9myf95xacO1iy8G/AVO/x5y124pjF3EaoWrTBRWC3vh0DPqa/MhKyx3mMeKg==}
     engines: {node: '>=22.1.0'}
 
   cliui@9.0.1:
@@ -4045,6 +4059,10 @@ packages:
     peerDependenciesMeta:
       xml2js:
         optional: true
+
+  node-addon-api@8.9.2:
+    resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
+    engines: {node: ^18 || ^20 || >= 21}
 
   node-fetch-native@1.6.7:
     resolution: {integrity: sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q==}
@@ -5399,6 +5417,9 @@ packages:
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
 
+  web-tree-sitter@0.27.1:
+    resolution: {integrity: sha512-qtx0VyUyNRHtL3ze7+v0hCKB/sLcAmY7ZAVp/ZK/bCj0yED8ptvNrr7Vd7DwDyKDWN9baqcUx4uaD2r2ql+6IA==}
+
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
 
@@ -6394,11 +6415,11 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
 
-  '@nuxt/cli@4.0.0-alpha.0(@nuxt/schema@4.5.2)(jiti@2.7.0)(rolldown@1.2.7)':
+  '@nuxt/cli@4.0.0-alpha.1(@nuxt/schema@4.5.2)(jiti@2.7.0)(rolldown@1.2.7)':
     dependencies:
       '@clack/prompts': 1.7.0
       args-tokenizer: 0.3.0
-      clickable-path: 0.0.1
+      clickable-path: 0.1.1
       confbox: 0.2.4
       consola: 3.4.2
       defu: 6.1.7
@@ -7698,6 +7719,11 @@ snapshots:
       y-protocols: 1.0.7(yjs@13.6.32)
       yjs: 13.6.32
 
+  '@tree-sitter-grammars/tree-sitter-hcl@1.2.0':
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
+
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -8290,7 +8316,7 @@ snapshots:
 
   citty@0.2.2: {}
 
-  clickable-path@0.0.1: {}
+  clickable-path@0.1.1: {}
 
   cliui@9.0.1:
     dependencies:
@@ -9479,6 +9505,8 @@ snapshots:
       - vite
       - webpack
 
+  node-addon-api@8.9.2: {}
+
   node-fetch-native@1.6.7: {}
 
   node-fetch@2.7.0:
@@ -9517,7 +9545,7 @@ snapshots:
   nuxt@4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.148.0)(@types/node@26.4.1)(@vue/compiler-sfc@3.5.42)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)))(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0))(esbuild@0.28.2)(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.4)(oxlint@1.81.0)(rolldown@1.2.7)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.7)(rollup@4.63.1))(rollup@4.63.1)(srvx@0.12.8)(supports-color@10.2.2)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(vue-tsc@3.3.11(typescript@5.9.3))(yaml@2.9.0):
     dependencies:
       '@dxup/nuxt': 0.5.10(esbuild@0.28.2)(magicast@0.5.4)(rolldown@1.2.7)(rollup@4.63.1)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
-      '@nuxt/cli': 4.0.0-alpha.0(@nuxt/schema@4.5.2)(jiti@2.7.0)(rolldown@1.2.7)
+      '@nuxt/cli': 4.0.0-alpha.1(@nuxt/schema@4.5.2)(jiti@2.7.0)(rolldown@1.2.7)
       '@nuxt/devtools': 3.4.2(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)))(ioredis@5.11.1(supports-color@10.2.2))(magic-string@1.2.3)(rolldown@1.2.7)(supports-color@10.2.2)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(rollup@4.63.1)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(vue@3.5.42(typescript@5.9.3))
       '@nuxt/kit': 4.5.2(magic-string@1.2.3)(magicast@0.5.4)(rolldown@1.2.7)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(rollup@4.63.1)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)))
       '@nuxt/nitro-server': 4.5.2(ab8204a727f986099babc5308bc3f905)
@@ -10957,6 +10985,8 @@ snapshots:
       typescript: 5.9.3
 
   w3c-keyname@2.2.8: {}
+
+  web-tree-sitter@0.27.1: {}
 
   webidl-conversions@3.0.1: {}
 

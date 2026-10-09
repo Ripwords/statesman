@@ -19,6 +19,7 @@
     "test:watch": "tsx scripts/test-db.ts && vitest",
     "test:e2e": "tsx scripts/test-db.ts && vitest run tests/e2e",
     "typecheck": "vue-tsc --noEmit",
+    "vendor:wasm": "tsx scripts/vendor-wasm.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
@@ -39,10 +40,12 @@
     "nuxt": "4.5.2",
     "pg": "8.23.0",
     "ulid": "^3.0.2",
+    "web-tree-sitter": "0.27.1",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.2.0",
+    "@tree-sitter-grammars/tree-sitter-hcl": "1.2.0",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.23.1",
     "@vitest/coverage-v8": "^4.1.11",
