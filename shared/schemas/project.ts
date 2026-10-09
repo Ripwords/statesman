@@ -13,6 +13,9 @@ export type ProjectRef = z.infer<typeof projectRefSchema>
 
 export const projectSlug = slug
 
+/** `/api/vars/:org/:project/:environment`. The environment slug is a project slug by rule. */
+export const environmentRefSchema = projectRefSchema.extend({ environment: projectSlug })
+
 /**
  * Body of `POST /api/ui/projects`. The same `slug` rule the router validates
  * with, deliberately reused rather than restated: a second regex could drift
