@@ -8,6 +8,7 @@ import { githubInstallation, repositoryLink } from '../../server/db/schema'
 import { provisionUser, signInHeaders, setRole, resetDb, seedProject } from '../protocol/helpers'
 import { GitHubClient, type github as githubFn } from '../../server/github/client'
 import type * as ClientModule from '../../server/github/client'
+import type * as HclModule from '../../server/hcl'
 import { createEnvironment } from '../../server/services/variables'
 import { linkRepository, recordInstallation, listInstallations } from '../../server/services/sync'
 import setup from '../../server/api/github/setup.get'
@@ -15,7 +16,14 @@ import putLink from '../../server/api/ui/environments/[id]/link.put'
 import syncNow from '../../server/api/ui/environments/[id]/sync.post'
 import listRepos from '../../server/api/ui/github/installations/[id]/repositories.get'
 
-const fake = vi.hoisted(() => ({ client: null as unknown }))
+const fake = vi.hoisted(() => ({ client: null as unknown, hclFails: false }))
+vi.mock('../../server/hcl', async (importOriginal) => {
+  const original = await importOriginal<typeof HclModule>()
+  return {
+    ...original,
+    hcl: () => (fake.hclFails ? Promise.reject(new Error('parser asset missing')) : original.hcl())
+  }
+})
 vi.mock('../../server/github/client', async (importOriginal) => ({
   ...(await importOriginal<typeof ClientModule>()),
   github: (() => fake.client) as typeof githubFn
@@ -50,10 +58,11 @@ const { privateKey } = generateKeyPairSync('rsa', {
   publicKeyEncoding: { type: 'spki', format: 'pem' }
 })
 
-/** Answers by path; anything unlisted is GitHub's 404. */
-function fakeGitHub(routes: Record<string, unknown>) {
+/** Answers by path; anything unlisted is GitHub's 404, and `unreachable` a network failure. */
+function fakeGitHub(routes: Record<string, unknown>, unreachable?: string) {
   const fetchImpl: typeof fetch = async (input) => {
     const path = new URL(String(input)).pathname
+    if (unreachable && path.includes(unreachable)) throw new TypeError('fetch failed')
     if (path in routes) return Response.json(routes[path])
     return Response.json({ message: 'Not Found: secret detail' }, { status: 404 })
   }
@@ -78,6 +87,7 @@ beforeEach(async () => {
     await db().delete(githubInstallation).where(eq(githubInstallation.installationId, id))
   }
   await db().delete(repositoryLink).where(eq(repositoryLink.environmentId, envId))
+  fake.hclFails = false
   fake.client = fakeGitHub({
     [`/app/installations/${KNOWN}`]: { id: KNOWN, account: { login: 'acme' } },
     [`/app/installations/${KNOWN}/access_tokens`]: {
@@ -141,6 +151,16 @@ describe('GET /api/github/setup', () => {
     expect(responseOf(event).redirect).toBe('/?github=connected')
   })
 
+  it('answers a malformed GitHub installation with a fixed 502, recording nothing', async () => {
+    fake.client = fakeGitHub({ [`/app/installations/${KNOWN}`]: { id: KNOWN, account: null } })
+    const event = callback({ installation_id: String(KNOWN), state: 'abc' }, 'abc')
+    await expect(setup(event)).rejects.toMatchObject({
+      statusCode: 502,
+      statusMessage: 'GitHub returned an error. Try again.'
+    })
+    expect(await recorded(KNOWN)).toEqual([])
+  })
+
   it('sends a pending approval request back with a notice', async () => {
     const event = callback({ setup_action: 'request', state: 'abc' }, 'abc')
     await setup(event)
@@ -169,6 +189,39 @@ describe('PUT /api/ui/environments/:id/link', () => {
       .from(repositoryLink)
       .where(eq(repositoryLink.environmentId, envId))
     expect(rows).toEqual([])
+  })
+
+  const linkRow = async () =>
+    (await db().select().from(repositoryLink).where(eq(repositoryLink.environmentId, envId)))[0]
+
+  // The link is saved before the first sync runs; a 500 here would tell the
+  // admin "Could not link" about a link that exists.
+  it('reports a saved link with a failed first sync when the sync fails unexpectedly', async () => {
+    await recordInstallation(KNOWN, 'acme')
+    fake.hclFails = true
+    const result = await put({ installationId: KNOWN, repoId: 77 })
+    expect(result).toEqual({
+      ok: false,
+      error: 'The first sync could not finish. Press Sync now to try again.'
+    })
+    expect(await linkRow()).toMatchObject({ repoId: 77, ref: 'main' })
+  })
+
+  it('reports a network failure during the first sync on the saved link', async () => {
+    await recordInstallation(KNOWN, 'acme')
+    fake.client = fakeGitHub(
+      {
+        [`/app/installations/${KNOWN}/access_tokens`]: {
+          token: 't',
+          expires_at: new Date(Date.now() + 3_600_000).toISOString()
+        },
+        '/installation/repositories': REPOS
+      },
+      '/commits/'
+    )
+    const result = await put({ installationId: KNOWN, repoId: 77 })
+    expect(result).toEqual({ ok: false, error: 'Could not reach GitHub.' })
+    expect(await linkRow()).toMatchObject({ lastSyncError: 'Could not reach GitHub.' })
   })
 
   it('maps a GitHub 404 to a fixed 4xx', async () => {

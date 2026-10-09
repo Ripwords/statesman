@@ -37,7 +37,10 @@ const client = new GitHubClient(
   async (input) => {
     const p = new URL(String(input)).pathname
     fetched.push(p)
-    if (p === '/repos/acme/infra/contents/broken') throw new TypeError('fetch failed')
+    if (p === '/repos/acme/infra/contents/offline') throw new TypeError('fetch failed')
+    if (p === '/repos/acme/infra/contents/broken')
+      return new Response(JSON.stringify([{ type: 'file', name: 'v.tf', path: 'broken/v.tf' }]))
+    if (p === '/repos/acme/infra/contents/broken/v.tf') return new Response('variable "x" {}\n')
     if (p.endsWith('/access_tokens'))
       return new Response(
         JSON.stringify({ token: 't', expires_at: new Date(Date.now() + 3_600_000).toISOString() }),
@@ -59,9 +62,18 @@ const deliver = (
 ) => {
   const rawBody = Buffer.from(JSON.stringify(payload))
   const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
+  // A parser fault in `broken/` stands in for any failure that is not GitHub's:
+  // syncEnvironment rethrows those instead of recording them.
+  const flaky: HclToolkit = {
+    ...hcl,
+    extractVariables: (source, file) => {
+      if (file.startsWith('broken/')) throw new Error('unexpected')
+      return hcl.extractVariables(source, file)
+    }
+  }
   return handleWebhook(
     { event, signature, rawBody },
-    { secret: SECRET, sync: { client, hcl }, audit }
+    { secret: SECRET, sync: { client, hcl: flaky }, audit }
   )
 }
 
@@ -103,6 +115,24 @@ describe('handleWebhook', () => {
     })
     expect(result).toEqual({ status: 202, synced: [envId] })
     expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['from_push'])
+  })
+
+  it('records a network failure on the link instead of dropping it', async () => {
+    const offline = (await createEnvironment(projectId, 'off')).id
+    await linkRepository({
+      environmentId: offline,
+      installationId: INSTALLATION,
+      repoId: 88,
+      repoFullName: 'acme/infra',
+      ref: 'main',
+      directory: 'offline'
+    })
+    const result = await deliver('push', {
+      ref: 'refs/heads/main',
+      repository: { id: 88, full_name: 'acme/infra' }
+    })
+    expect(result.synced).toContain(offline)
+    expect((await linkSummary(offline))?.summary.lastSyncError).toBe('Could not reach GitHub.')
   })
 
   it('ignores a push to another branch or a tag', async () => {
@@ -225,6 +255,24 @@ describe('handleWebhook', () => {
     })
     expect(result).toEqual({ status: 202, synced: [envId] })
     expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['from_push'])
+  })
+
+  it('records a network failure on the link instead of dropping it', async () => {
+    const offline = (await createEnvironment(projectId, 'off')).id
+    await linkRepository({
+      environmentId: offline,
+      installationId: INSTALLATION,
+      repoId: 88,
+      repoFullName: 'acme/infra',
+      ref: 'main',
+      directory: 'offline'
+    })
+    const result = await deliver('push', {
+      ref: 'refs/heads/main',
+      repository: { id: 88, full_name: 'acme/infra' }
+    })
+    expect(result.synced).toContain(offline)
+    expect((await linkSummary(offline))?.summary.lastSyncError).toBe('Could not reach GitHub.')
   })
 
   describe('records an installation GitHub reports', () => {

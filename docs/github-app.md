@@ -196,18 +196,28 @@ text is stored on the link, so it stays until the next successful sync.
 | `GitHub 422: …` | GitHub's usual answer for a branch that does not exist. Check the Branch field. |
 | `GitHub <status>: …` | Any other GitHub answer, including 5xx. Read the text after the status. |
 | `GitHub 403: …`                                                   | GitHub refused the request: Contents or Metadata permission missing, or a rate limit. Read the text after the status.                                       |
-| `GitHub 401: …`                                                   | GitHub rejected the app's own credentials: a wrong `GITHUB_APP_ID`, or a private key that does not belong to that app.                                       |
+| `GitHub 401: …`                                                   | GitHub rejected the app's own credentials: a wrong `GITHUB_APP_ID`, or a private key that does not belong to that app. statesman also drops its cached installation token on a 401, so if the token was revoked, the next sync uses a fresh one.                                       |
 | `No .tf files in <directory> at <branch>.` | The directory exists but holds no `.tf` file directly inside it. When the Directory field is empty the message reads `No .tf files in the repository root at <branch>.` Check the directory, or whether the files live in a subdirectory (which is not read). |
 | `<directory> is a file, not a directory`                          | The Directory field names a file. Point it at the folder.                                                                                                   |
 | `variable "x" is declared in a.tf and b.tf`                       | Two files in the directory declare the same variable. Terraform would refuse this too. Remove one.                                                          |
 | `<file>:<line>: syntax error`                                     | A `.tf` file does not parse. The other messages of this form, for example `attributes must be on separate lines` or `templates are not allowed in a variables file`, name the file and line in the same way. |
+| `Could not reach GitHub.` | The request to GitHub failed before an answer arrived: DNS, a firewall, or GitHub being down. Check that the server can reach `api.github.com`, then press **Sync now**. |
+| `GitHub did not answer in time.` | GitHub took longer than ten seconds to answer. Press **Sync now**. |
+| `GitHub sent an unexpected response.` | GitHub answered, but not with the data statesman reads. Usually transient; press **Sync now**. |
+| `The GitHub App private key could not sign a request. Check GITHUB_APP_PRIVATE_KEY.` | `GITHUB_APP_PRIVATE_KEY` is not a valid PEM private key, for example with its line breaks lost. See [step 2](#2-generate-the-private-key). |
 | `The repository link changed during the sync.`                    | An admin relinked the environment while a sync was running. The result was dropped so it could not land on the new link. Press **Sync now**.               |
 | `The GitHub App no longer has access to this repository.`         | The repository was removed from the installation. Add it back under the installation's settings on GitHub, then press **Sync now**.                         |
 
 **Sync now** on an environment with no link answers 404 `This environment is not linked to a repository.` That is not stored on a link; the panel shows it as the action error. Link a repository first.
 
-A network failure between statesman and GitHub is not stored on the link. **Sync
-now** shows `Could not sync. Check your connection, then try again.` instead.
+A failure to reach GitHub is stored on the link like any other sync failure.
+statesman waits ten seconds for each GitHub request before giving up.
+
+If the first sync after **Link repository** fails for a reason that is not
+GitHub's or the `.tf` files' (for example the server's parser failing to load),
+the link is still saved and the form shows `Linked. The first sync failed: The
+first sync could not finish. Press Sync now to try again.` The server log has
+the cause.
 
 Messages from the dashboard's own GitHub routes are fixed, so raw GitHub text
 never reaches the page:

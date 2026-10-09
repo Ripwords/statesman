@@ -53,5 +53,15 @@ export default defineEventHandler(async (event) => {
       directory
     }
   })
-  return syncEnvironment(id, { client, hcl: await hcl() })
+  // The link is saved, so from here a failure is a failed first sync, never a
+  // failed link: a 500 would tell the admin "Could not link" about a link that exists.
+  try {
+    return await syncEnvironment(id, { client, hcl: await hcl() })
+  } catch (error) {
+    console.error(`First sync failed unexpectedly for environment ${id}`, error)
+    return {
+      ok: false as const,
+      error: 'The first sync could not finish. Press Sync now to try again.'
+    }
+  }
 })

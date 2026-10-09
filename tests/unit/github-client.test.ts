@@ -148,4 +148,93 @@ describe('GitHubClient', () => {
     expect(error).toBeInstanceOf(GitHubError)
     expect(error).toMatchObject({ status: 404, message: expect.stringContaining('Not Found') })
   })
+
+  describe('failures that are not a GitHub status', () => {
+    const fails = (promise: Promise<unknown>) => promise.catch((e: unknown) => e)
+
+    it.each([
+      ['an account of null', { id: 7, account: null }],
+      ['no id', { account: { login: 'acme' } }]
+    ])('turns an installation with %s into a fixed 502', async (_n, json) => {
+      const { impl } = fakeFetch({ 'GET /app/installations/7': { json } })
+      const error = await fails(new GitHubClient(app, impl).getInstallation(7))
+      expect(error).toBeInstanceOf(GitHubError)
+      expect(error).toMatchObject({ status: 502, message: 'GitHub sent an unexpected response.' })
+    })
+
+    it('turns a malformed repository list into a fixed 502', async () => {
+      const { impl } = fakeFetch({
+        ...tokenRoute,
+        'GET /installation/repositories': { json: { repositories: 'nope' } }
+      })
+      const error = await fails(new GitHubClient(app, impl).listRepositories(7))
+      expect(error).toMatchObject({ status: 502, message: 'GitHub sent an unexpected response.' })
+    })
+
+    it('turns a body that is not JSON into a fixed 502', async () => {
+      const { impl } = fakeFetch({ 'GET /app/installations/7': { text: '<html>' } })
+      const error = await fails(new GitHubClient(app, impl).getInstallation(7))
+      expect(error).toMatchObject({ status: 502, message: 'GitHub sent an unexpected response.' })
+    })
+
+    it('turns a network failure into a GitHubError', async () => {
+      const impl: typeof fetch = async () => {
+        throw new TypeError('fetch failed')
+      }
+      const error = await fails(new GitHubClient(app, impl).getInstallation(7))
+      expect(error).toBeInstanceOf(GitHubError)
+      expect(error).toMatchObject({ status: 502, message: 'Could not reach GitHub.' })
+    })
+
+    it('gives up on a request GitHub does not answer in time', async () => {
+      const seen: Array<AbortSignal | null | undefined> = []
+      const impl: typeof fetch = (_input, init) =>
+        new Promise((_resolve, reject) => {
+          seen.push(init?.signal)
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        })
+      const error = await fails(new GitHubClient(app, impl, Date.now, 20).getInstallation(7))
+      expect(seen[0]).toBeInstanceOf(AbortSignal)
+      expect(error).toBeInstanceOf(GitHubError)
+      expect(error).toMatchObject({ status: 504, message: 'GitHub did not answer in time.' })
+    })
+
+    it('reports a private key that cannot sign as a GitHubError', async () => {
+      const { impl, calls } = fakeFetch({})
+      const broken = { ...app, privateKey: 'not a key' }
+      const error = await fails(new GitHubClient(broken, impl).getInstallation(7))
+      expect(error).toBeInstanceOf(GitHubError)
+      expect(error).toMatchObject({
+        status: 500,
+        message:
+          'The GitHub App private key could not sign a request. Check GITHUB_APP_PRIVATE_KEY.'
+      })
+      expect(calls).toEqual([])
+    })
+  })
+
+  it('drops a cached installation token GitHub rejects, and mints a new one next time', async () => {
+    let rejectOnce = true
+    const tokens: string[] = []
+    const impl: typeof fetch = async (input, init) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/access_tokens')) {
+        const token = `ghs_${tokens.length}`
+        tokens.push(token)
+        return Response.json(
+          { token, expires_at: new Date(Date.now() + 3_600_000).toISOString() },
+          { status: 201 }
+        )
+      }
+      if (rejectOnce && new Headers(init?.headers).get('authorization') === 'token ghs_0') {
+        rejectOnce = false
+        return Response.json({ message: 'Bad credentials' }, { status: 401 })
+      }
+      return Response.json({ total_count: 0, repositories: [] })
+    }
+    const client = new GitHubClient(app, impl)
+    await expect(client.listRepositories(7)).rejects.toMatchObject({ status: 401 })
+    expect(await client.listRepositories(7)).toEqual([])
+    expect(tokens).toEqual(['ghs_0', 'ghs_1'])
+  })
 })
