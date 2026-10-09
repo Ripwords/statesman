@@ -165,6 +165,29 @@ function messageOf(caught: unknown, fallback: string): string {
               <ClientOnly fallback="—">Added {{ when.format(new Date(u.createdAt)) }}</ClientOnly>
             </span>
 
+            <div class="flex w-28 justify-end">
+              <UPopover v-if="u.projects.length > 0">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-boxes"
+                  class="tabular"
+                  :label="`${u.projects.length} ${u.projects.length === 1 ? 'project' : 'projects'}`"
+                  :aria-label="`Projects for ${u.email}`"
+                />
+                <template #content>
+                  <ul class="max-h-64 space-y-1 overflow-y-auto p-3 text-sm">
+                    <li v-for="p in u.projects" :key="`${p.org}/${p.slug}`" class="flex gap-2">
+                      <span class="min-w-0 break-all" translate="no">{{ p.org }}/{{ p.slug }}</span>
+                      <span class="text-muted">· {{ p.role }}</span>
+                    </li>
+                  </ul>
+                </template>
+              </UPopover>
+              <span v-else class="text-sm text-muted">No projects</span>
+            </div>
+
             <USelect
               :model-value="roleOf(u.role)"
               :items="roleOptions"

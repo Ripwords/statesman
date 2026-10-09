@@ -4,11 +4,12 @@ import { statusMessageOf } from '~/utils/status-message'
 import { relativeTime } from '~/utils/relative-time'
 import { formatValue } from '~/utils/variable-value'
 import { shownDescription } from '~/utils/variable-form'
+import type { EffectiveRole } from '~~/shared/project-permissions'
 
-const props = defineProps<{ projectId: string }>()
+const props = defineProps<{ projectId: string; role: EffectiveRole | null | undefined }>()
 
 const route = useRoute()
-const { isAdmin } = useAuth()
+const { can } = useProjectRole(toRef(props, 'role'))
 const origin = useRequestURL().origin
 
 const { data: environments, refresh: refreshEnvironments } = await useFetch(
@@ -57,7 +58,7 @@ const columns = computed<TableColumn<Row>[]>(() => [
   { id: 'value', header: 'Value' },
   { accessorKey: 'description', header: 'Description' },
   { accessorKey: 'updatedAt', header: 'Updated' },
-  ...(isAdmin.value
+  ...(can('variable:write')
     ? [{ id: 'actions', header: () => h('span', { class: 'sr-only' }, 'Actions') }]
     : [])
 ])
@@ -147,9 +148,9 @@ const curl = computed(
       title="No environments yet"
       description="An environment holds one set of variables, such as staging or production. Create one to start adding values."
     >
-      <AdminOnly quiet>
+      <ProjectOnly :role="role" permission="environment:create">
         <UButton label="New environment" icon="i-lucide-plus" @click="createEnvOpen = true" />
-      </AdminOnly>
+      </ProjectOnly>
     </EmptyState>
 
     <template v-else>
@@ -164,8 +165,8 @@ const curl = computed(
           aria-label="Environment"
           class="w-48"
         />
-        <AdminOnly quiet>
-          <div class="ms-auto flex flex-wrap items-center gap-2">
+        <div class="ms-auto flex flex-wrap items-center gap-2">
+          <ProjectOnly :role="role" permission="variable:write">
             <UButton label="Add variable" icon="i-lucide-plus" size="sm" @click="openAdd" />
             <UButton
               label="Import"
@@ -175,6 +176,8 @@ const curl = computed(
               variant="outline"
               @click="importOpen = true"
             />
+          </ProjectOnly>
+          <ProjectOnly :role="role" permission="environment:create">
             <UButton
               label="New environment"
               icon="i-lucide-layers"
@@ -183,6 +186,8 @@ const curl = computed(
               variant="outline"
               @click="createEnvOpen = true"
             />
+          </ProjectOnly>
+          <ProjectOnly :role="role" permission="environment:delete">
             <UButton
               label="Delete environment"
               icon="i-lucide-trash-2"
@@ -191,14 +196,15 @@ const curl = computed(
               variant="ghost"
               @click="deleteEnvOpen = true"
             />
-          </div>
-        </AdminOnly>
+          </ProjectOnly>
+        </div>
       </div>
 
       <RepositoryPanel
         v-if="envId"
         :environment-id="envId"
         :link="variables?.link ?? null"
+        :role="role"
         @changed="refreshVariables()"
       />
 

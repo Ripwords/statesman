@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
-import { user } from '../db/schema'
+import { organization, project, projectMember, user } from '../db/schema'
 import { auth } from '../utils/auth'
 import { roleOf, type UserRole } from '../../shared/schemas/user'
+import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
 
 export type Account = {
   id: string
@@ -11,6 +12,8 @@ export type Account = {
   name: string
   role: UserRole
   createdAt: Date
+  /** Projects the account holds a role on. A deployment admin's reach is not listed here. */
+  projects: Array<{ org: string; slug: string; role: ProjectRole }>
 }
 
 /**
@@ -31,7 +34,34 @@ export async function listAccounts(): Promise<Account[]> {
     .from(user)
     .orderBy(user.createdAt)
 
-  return rows.map((row) => ({ ...row, role: roleOf(row.role) }))
+  const memberships = await db()
+    .select({
+      userId: projectMember.userId,
+      role: projectMember.role,
+      slug: project.slug,
+      org: organization.slug
+    })
+    .from(projectMember)
+    .innerJoin(project, eq(project.id, projectMember.organizationId))
+    .innerJoin(organization, eq(organization.id, project.orgId))
+    .orderBy(organization.slug, project.slug)
+
+  const byUser = new Map<string, Account['projects']>()
+  for (const m of memberships) {
+    // An unrecognised role string is no access, so it is not listed.
+    const role = projectRoleSchema.safeParse(m.role)
+    if (!role.success) continue
+    byUser.set(m.userId, [
+      ...(byUser.get(m.userId) ?? []),
+      { org: m.org, slug: m.slug, role: role.data }
+    ])
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    role: roleOf(row.role),
+    projects: byUser.get(row.id) ?? []
+  }))
 }
 
 async function requireAccount(id: string): Promise<{ id: string; role: UserRole }> {

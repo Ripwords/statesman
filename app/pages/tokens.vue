@@ -2,15 +2,10 @@
 definePageMeta({ layout: 'dashboard' })
 useHead({ title: 'Tokens · statesman' })
 
-const { isAdmin } = useAuth()
-
-// Skipped for a member: the request would answer 403 and paint "Could Not Load
-// Tokens" over the page, which blames the server for a permission decision.
-const {
-  data: tokens,
-  error,
-  refresh
-} = await useFetch('/api/ui/tokens', { immediate: isAdmin.value })
+// Every account lists and revokes its own tokens; only admins and project
+// owners may create them.
+const { canCreate } = useTokenAccess()
+const { data: tokens, error, refresh } = await useFetch('/api/ui/tokens')
 type TokenRow = NonNullable<typeof tokens.value>[number]
 
 const revealed = ref<{ id: string; key: string; name: string } | null>(null)
@@ -60,10 +55,14 @@ function onCreated(token: { id: string; key: string; name: string }) {
   <div class="space-y-6">
     <div class="flex items-center justify-between gap-4">
       <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Tokens</h1>
-      <UButton v-if="isAdmin" icon="i-lucide-plus" label="New Token" @click="creating = true" />
+      <UButton v-if="canCreate" icon="i-lucide-plus" label="New Token" @click="creating = true" />
     </div>
 
-    <AdminOnly what="Managing tokens">
+    <div class="space-y-6">
+      <p v-if="!canCreate" class="text-sm text-muted text-pretty">
+        Tokens are for admins and project owners.
+      </p>
+
       <div aria-live="polite">
         <UAlert
           v-if="notice"
@@ -94,9 +93,18 @@ function onCreated(token: { id: string; key: string; name: string }) {
         v-else-if="!tokens?.length"
         icon="i-lucide-key-round"
         title="No Tokens Yet"
-        description="Terraform authenticates with a token. Create one, then paste it into the password field of your backend block."
+        :description="
+          canCreate
+            ? 'Terraform authenticates with a token. Create one, then paste it into the password field of your backend block.'
+            : 'You have no tokens. An admin or a project owner can make one for you.'
+        "
       >
-        <UButton icon="i-lucide-plus" label="Create Your First Token" @click="creating = true" />
+        <UButton
+          v-if="canCreate"
+          icon="i-lucide-plus"
+          label="Create Your First Token"
+          @click="creating = true"
+        />
       </EmptyState>
 
       <ul v-else class="grid gap-2">
@@ -140,7 +148,12 @@ function onCreated(token: { id: string; key: string; name: string }) {
 
       <!-- The slideover's own body is the scroll container, so the containment
          belongs on that slot rather than on a child of it. -->
-      <USlideover v-model:open="creating" title="New Token" :ui="{ body: 'overscroll-contain' }">
+      <USlideover
+        v-if="canCreate"
+        v-model:open="creating"
+        title="New Token"
+        :ui="{ body: 'overscroll-contain' }"
+      >
         <template #body>
           <TokenConfigurator @created="onCreated" />
         </template>
@@ -188,6 +201,6 @@ function onCreated(token: { id: string; key: string; name: string }) {
       </UModal>
 
       <TokenRevealModal :token="revealed" @close="revealed = null" />
-    </AdminOnly>
+    </div>
   </div>
 </template>

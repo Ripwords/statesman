@@ -4,7 +4,13 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
 import { user } from '../../server/db/schema'
 import { listAccounts, changeRole, resetPassword } from '../../server/services/users'
-import { provisionUser, signInHeaders } from '../protocol/helpers'
+import {
+  provisionUser,
+  signInHeaders,
+  resetDb,
+  seedProject,
+  grantProjectRole
+} from '../protocol/helpers'
 import { auth } from '../../server/utils/auth'
 
 const PASSWORD = 'correct horse battery staple'
@@ -47,8 +53,24 @@ describe('listAccounts', () => {
     expect(accounts.find((a) => a.id === memberId)?.role).toBe('member')
     // Field names, not the serialised list: random account ids can spell "hash".
     for (const account of accounts) {
-      expect(Object.keys(account).toSorted()).toEqual(['createdAt', 'email', 'id', 'name', 'role'])
+      expect(Object.keys(account).toSorted()).toEqual([
+        'createdAt',
+        'email',
+        'id',
+        'name',
+        'projects',
+        'role'
+      ])
     }
+  })
+
+  it("lists each account's project roles as org, slug and role", async () => {
+    const { memberId } = await pair()
+    await resetDb('usersvc')
+    const pid = await seedProject('usersvc', 'alpha')
+    await grantProjectRole(pid, memberId, 'editor')
+    const account = (await listAccounts()).find((a) => a.id === memberId)
+    expect(account?.projects).toEqual([{ org: 'usersvc', slug: 'alpha', role: 'editor' }])
   })
 
   it('reports a NULL role as member rather than leaking the null onward', async () => {

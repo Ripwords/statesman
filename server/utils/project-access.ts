@@ -12,6 +12,7 @@ import {
   user
 } from '../db/schema'
 import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
+import type { EffectiveRole, ProjectPermission } from '../../shared/project-permissions'
 import { isAdmin, roleOf, type UserRole } from '../../shared/schemas/user'
 import { requireSession, type Principal } from './ui-auth'
 import type { TokenScope } from '../../shared/schemas/token'
@@ -47,19 +48,7 @@ export const projectRoles = {
   })
 }
 
-export type ProjectPermission =
-  | 'project:read'
-  | 'project:rollback'
-  | 'project:unlock'
-  | 'environment:create'
-  | 'environment:delete'
-  | 'environment:link'
-  | 'environment:sync'
-  | 'variable:write'
-  | 'member:manage'
-  | 'token:create'
-
-export type EffectiveRole = ProjectRole | 'admin'
+export type { ProjectPermission, EffectiveRole }
 
 /** Each permission as the request the plugin's role objects understand. */
 const REQUESTS = {

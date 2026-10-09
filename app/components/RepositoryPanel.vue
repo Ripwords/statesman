@@ -4,10 +4,17 @@ import { linkDescription } from '~/utils/repository-link'
 import { relativeTime } from '~/utils/relative-time'
 import { statusMessageOf } from '~/utils/status-message'
 
-const props = defineProps<{ environmentId: string; link: LinkSummary | null }>()
+import type { EffectiveRole } from '~~/shared/project-permissions'
+
+const props = defineProps<{
+  environmentId: string
+  link: LinkSummary | null
+  role: EffectiveRole | null | undefined
+}>()
 const emit = defineEmits<{ changed: [] }>()
 
 const { isAdmin } = useAuth()
+const { can } = useProjectRole(toRef(props, 'role'))
 const { data: github } = await useFetch('/api/ui/github')
 
 const linkOpen = ref(false)
@@ -84,7 +91,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    v-if="github?.configured && (link || isAdmin)"
+    v-if="github?.configured && (link || can('environment:link'))"
     aria-label="GitHub repository"
     class="rounded-lg border border-default px-4 py-3 text-sm"
   >
@@ -102,8 +109,8 @@ onBeforeUnmount(() => {
             <template v-else>Not synced yet</template>
           </p>
         </div>
-        <AdminOnly quiet>
-          <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2">
+          <ProjectOnly :role="role" permission="environment:sync">
             <UButton
               label="Sync now"
               icon="i-lucide-refresh-cw"
@@ -113,6 +120,8 @@ onBeforeUnmount(() => {
               :loading="syncing"
               @click="syncNow"
             />
+          </ProjectOnly>
+          <ProjectOnly :role="role" permission="environment:link">
             <UButton
               label="Unlink"
               icon="i-lucide-unlink"
@@ -121,8 +130,8 @@ onBeforeUnmount(() => {
               variant="ghost"
               @click="openUnlink"
             />
-          </div>
-        </AdminOnly>
+          </ProjectOnly>
+        </div>
       </div>
 
       <UAlert
@@ -200,32 +209,34 @@ onBeforeUnmount(() => {
       </UModal>
     </template>
 
-    <AdminOnly v-else quiet>
+    <ProjectOnly v-else :role="role" permission="environment:link">
       <div class="flex flex-wrap items-center gap-3">
         <UIcon name="i-lucide-github" class="size-4 shrink-0" />
         <p class="min-w-0 flex-1 text-muted text-pretty">
           Declare this environment's variables in a repository.
         </p>
+        <!-- Connecting the App is deployment-wide, so only an admin is offered it. -->
         <UButton
-          v-if="github.installations.length === 0"
+          v-if="github.installations.length > 0"
+          label="Link repository"
+          icon="i-lucide-link"
+          size="sm"
+          @click="linkOpen = true"
+        />
+        <UButton
+          v-else-if="isAdmin"
           label="Connect GitHub"
           icon="i-lucide-github"
           size="sm"
           :href="github.installUrl ?? undefined"
           external
         />
-        <UButton
-          v-else
-          label="Link repository"
-          icon="i-lucide-link"
-          size="sm"
-          @click="linkOpen = true"
-        />
+        <p v-else class="text-muted text-pretty">An admin must connect GitHub first.</p>
       </div>
-    </AdminOnly>
+    </ProjectOnly>
 
     <RepositoryLinkModal
-      v-if="isAdmin"
+      v-if="can('environment:link')"
       v-model:open="linkOpen"
       :environment-id="environmentId"
       :installations="github.installations"

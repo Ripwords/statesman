@@ -1,15 +1,22 @@
 <script setup lang="ts">
-const props = defineProps<{ projectId: string; who: string | null; since: string | null }>()
+import type { EffectiveRole } from '~~/shared/project-permissions'
+
+const props = defineProps<{
+  projectId: string
+  who: string | null
+  since: string | null
+  role: EffectiveRole | null | undefined
+}>()
 const emit = defineEmits<{ released: [] }>()
 
 const open = ref(false)
 const pending = ref(false)
 const failure = ref<string | null>(null)
 
-// Force-unlock is admin-only server-side. The banner itself still renders for a
-// member — knowing the state is locked, and by whom, is exactly what they came
-// to find out — but the button that would answer 403 is not offered.
-const { isAdmin } = useAuth()
+// Force-unlock needs editor on the project server-side. The banner itself still
+// renders for a viewer — knowing the state is locked, and by whom, is exactly
+// what they came to find out — but the button that would answer 403 is not offered.
+const { can } = useProjectRole(toRef(props, 'role'))
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -39,7 +46,7 @@ async function forceUnlock() {
       </template>
       <template #actions>
         <UButton
-          v-if="isAdmin"
+          v-if="can('project:unlock')"
           color="warning"
           variant="outline"
           label="Force Unlock"

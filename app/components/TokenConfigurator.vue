@@ -4,6 +4,7 @@ import { tokenConfigSchema, type StateAction, type TokenConfig } from '~~/shared
 
 const emit = defineEmits<{ created: [{ id: string; key: string; name: string }] }>()
 
+const { isAdmin } = useAuth()
 const { data: projects } = await useFetch('/api/ui/projects')
 
 const state = reactive<Partial<TokenConfig>>({
@@ -68,7 +69,25 @@ const actionOptions: { label: string; value: StateAction; description: string }[
   }
 ]
 
-const projectOptions = computed(() => (projects.value ?? []).map((p) => `${p.org}/${p.slug}`))
+// A token can only be scoped to a project its creator owns (an admin owns all).
+const projectOptions = computed(() =>
+  (projects.value ?? [])
+    .filter((p) => p.myRole === 'owner' || p.myRole === 'admin')
+    .map((p) => `${p.org}/${p.slug}`)
+)
+
+const scopeOptions = [
+  {
+    label: 'Specific Projects',
+    value: 'projects',
+    description: 'Recommended. A leaked token reaches only these.'
+  },
+  {
+    label: 'All My Projects',
+    value: 'all',
+    description: 'Convenient, but a leak exposes every project.'
+  }
+]
 
 const pending = ref(false)
 const formError = ref<string | null>(null)
@@ -130,29 +149,17 @@ function onError(event: FormErrorEvent) {
       <UCheckbox v-model="readVariables" label="Read Variables" />
     </UFormField>
 
-    <UFormField label="Project Scope" name="scope">
-      <URadioGroup
-        v-model="scopeKind"
-        :items="[
-          {
-            label: 'Specific Projects',
-            value: 'projects',
-            description: 'Recommended. A leaked token reaches only these.'
-          },
-          {
-            label: 'All My Projects',
-            value: 'all',
-            description: 'Convenient, but a leak exposes every project.'
-          }
-        ]"
-      />
+    <UFormField v-if="isAdmin" label="Project Scope" name="scope">
+      <URadioGroup v-model="scopeKind" :items="scopeOptions" />
     </UFormField>
 
     <UFormField
       v-if="scopeKind === 'projects'"
       label="Projects"
       name="scope.projects"
-      description="Pick at least one."
+      :description="
+        isAdmin ? 'Pick at least one.' : 'Pick at least one. Only projects you own are listed.'
+      "
       required
     >
       <!--

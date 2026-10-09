@@ -55,12 +55,16 @@ const versionOptions = computed(() =>
   (history.value?.versions ?? []).map((v) => ({ label: `#${v.serial ?? '?'}`, value: v.id }))
 )
 
+const myRole = computed(() => current.value?.myRole ?? null)
+
 const tabItems = [
   { label: 'State', value: 'state' },
-  { label: 'Variables', value: 'variables' }
+  { label: 'Variables', value: 'variables' },
+  { label: 'Members', value: 'members' }
 ]
 const tab = computed({
-  get: () => (route.query.tab === 'variables' ? 'variables' : 'state'),
+  get: () =>
+    route.query.tab === 'variables' || route.query.tab === 'members' ? route.query.tab : 'state',
   set: (value: string) => {
     void navigateTo({ query: { ...route.query, tab: value === 'state' ? undefined : value } })
   }
@@ -95,9 +99,9 @@ const pendingRollback = ref<Version | null>(null)
 const rollingBack = ref(false)
 const rollbackError = ref<string | null>(null)
 
-// Rolling back is admin-only server-side, so a member is not offered the
-// control. The timeline itself, and every diff, stay readable.
-const { isAdmin } = useAuth()
+// Rolling back needs owner on the project server-side, so a lesser role is not
+// offered the control. The timeline itself, and every diff, stay readable.
+const { can } = useProjectRole(myRole)
 
 /**
  * Says what actually went wrong. Until Lane A's admin API merges every attempt
@@ -159,9 +163,18 @@ const bytes = new Intl.NumberFormat(undefined, {
   <div class="space-y-6">
     <UBreadcrumb :items="[{ label: 'Projects', to: '/' }, { label: `${org}/${slug}` }]" />
 
-    <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance" translate="no">
-      {{ org }}/{{ slug }}
-    </h1>
+    <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance" translate="no">
+        {{ org }}/{{ slug }}
+      </h1>
+      <UBadge
+        v-if="myRole"
+        :color="ROLE_COLOR[myRole]"
+        variant="subtle"
+        :label="myRole"
+        aria-label="Your role on this project"
+      />
+    </div>
 
     <div v-if="projectsError" aria-live="polite">
       <UAlert
@@ -189,7 +202,9 @@ const bytes = new Intl.NumberFormat(undefined, {
     <template v-else>
       <UTabs v-model="tab" :items="tabItems" :content="false" class="w-full" />
 
-      <VariablesPanel v-if="tab === 'variables'" :project-id="current.id" />
+      <VariablesPanel v-if="tab === 'variables'" :project-id="current.id" :role="myRole" />
+
+      <MembersPanel v-else-if="tab === 'members'" :project-id="current.id" :role="myRole" />
 
       <template v-else>
         <!--
@@ -202,6 +217,7 @@ const bytes = new Intl.NumberFormat(undefined, {
           :project-id="current.id"
           :who="current.lockedBy"
           :since="current.lockedAt"
+          :role="myRole"
           @released="onLockReleased"
         />
 
@@ -277,7 +293,7 @@ const bytes = new Intl.NumberFormat(undefined, {
                 <ClientOnly fallback="—">{{ bytes.format(v.sizeBytes) }}</ClientOnly>
               </span>
               <UButton
-                v-if="v.id !== history.currentVersionId && isAdmin"
+                v-if="v.id !== history.currentVersionId && can('project:rollback')"
                 class="ms-auto"
                 color="neutral"
                 variant="ghost"

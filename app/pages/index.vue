@@ -13,6 +13,7 @@ const creating = ref(false)
 // Creating a project is admin-only server-side; a member is offered no button
 // for it rather than a 403 after filling the form in.
 const { isAdmin } = useAuth()
+const { canCreate: canCreateToken } = useTokenAccess()
 
 // v1 runs one organization per deployment (spec §5), so any row names it. On an
 // empty list there is no row, and the server resolves it instead.
@@ -91,12 +92,12 @@ onMounted(() => {
     -->
     <EmptyState
       v-else-if="!projects?.length"
-      icon="i-lucide-boxes"
-      title="No Projects Yet"
+      :icon="isAdmin ? 'i-lucide-boxes' : 'i-lucide-folder-lock'"
+      :title="isAdmin ? 'No Projects Yet' : 'No projects yet'"
       :description="
         isAdmin
           ? 'Create a project here, then point a Terraform backend block at it. Projects are never created implicitly: an address that does not match one returns 404, so a typo cannot quietly split your state across two of them.'
-          : 'No projects exist yet. Creating one is limited to admin accounts, so ask an admin to add the first one.'
+          : 'You haven\'t been added to any projects yet. Ask a project owner or an admin.'
       "
     >
       <div class="flex flex-wrap justify-center gap-2">
@@ -107,6 +108,7 @@ onMounted(() => {
           @click="creating = true"
         />
         <UButton
+          v-if="canCreateToken"
           to="/tokens"
           label="Create a Token"
           icon="i-lucide-key-round"
@@ -140,6 +142,12 @@ onMounted(() => {
               max-w-full are what let the badge shrink far enough for that to
               take effect.
             -->
+            <UBadge
+              :color="ROLE_COLOR[p.myRole]"
+              variant="subtle"
+              :label="p.myRole"
+              aria-label="Your role on this project"
+            />
             <UBadge
               v-if="isLocked(p)"
               color="warning"
