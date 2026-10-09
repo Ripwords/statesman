@@ -419,7 +419,8 @@ placeholder and must never be installed.
 - **Sync now** in the dashboard.
 
 There is no polling. The webhook runs the sync inline: a few small file fetches
-fit within a serverless invocation, and GitHub retries failed deliveries.
+fit within a serverless invocation. GitHub does not retry a failed delivery on
+its own; redeliver it from the App's Advanced tab.
 
 ### Without GitHub
 

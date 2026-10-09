@@ -11,10 +11,8 @@ import {
 
 const pushSchema = z.object({
   ref: z.string(),
-  repository: z.object({ id: z.number(), full_name: z.string() })
-})
-const repositoryEventSchema = z.object({
-  action: z.string(),
+  deleted: z.boolean().optional(),
+  after: z.string().optional(),
   repository: z.object({ id: z.number(), full_name: z.string() })
 })
 const installationSchema = z.object({
@@ -48,19 +46,31 @@ export async function handleWebhook(
     if (!push.success) return { status: 400, synced: [] }
     await renameRepository(push.data.repository.id, push.data.repository.full_name)
     if (!push.data.ref.startsWith('refs/heads/')) return { status: 202, synced: [] }
+    // A deleted branch has nothing to read; GitHub sends an all-zero `after`.
+    if (push.data.deleted || /^0+$/.test(push.data.after ?? '')) return { status: 202, synced: [] }
     const branch = push.data.ref.slice('refs/heads/'.length)
     const environments = await linksForPush(push.data.repository.id, branch)
-    // Sequential: a handful of small fetches each, and GitHub retries a
-    // delivery that times out, so parallelism would buy nothing but rate limit.
-    for (const id of environments) await syncEnvironment(id, deps.sync)
-    return { status: 202, synced: environments }
+    // Sequential: a handful of small fetches each, so parallelism would buy
+    // nothing but rate limit. GitHub does not redeliver a failed delivery on
+    // its own, so one environment's unexpected failure (a network error is a
+    // TypeError, which syncEnvironment rethrows) must not skip the rest. It is
+    // logged, not recorded on the link.
+    const synced: string[] = []
+    for (const id of environments) {
+      try {
+        await syncEnvironment(id, deps.sync)
+        synced.push(id)
+      } catch (error) {
+        console.error(`Webhook sync failed for environment ${id}`, error)
+      }
+    }
+    return { status: 202, synced }
   }
 
   if (input.event === 'installation') {
     const parsed = installationSchema.safeParse(payload)
     if (parsed.success && parsed.data.action === 'deleted') {
-      await removeInstallation(parsed.data.installation.id)
-      await deps.audit?.('uninstall')
+      if (await removeInstallation(parsed.data.installation.id)) await deps.audit?.('uninstall')
     }
     return { status: 202, synced: [] }
   }
@@ -73,13 +83,6 @@ export async function handleWebhook(
         parsed.data.repositories_removed.map((r) => r.id)
       )
     }
-    return { status: 202, synced: [] }
-  }
-
-  if (input.event === 'repository') {
-    const parsed = repositoryEventSchema.safeParse(payload)
-    if (parsed.success && parsed.data.action === 'renamed')
-      await renameRepository(parsed.data.repository.id, parsed.data.repository.full_name)
     return { status: 202, synced: [] }
   }
 

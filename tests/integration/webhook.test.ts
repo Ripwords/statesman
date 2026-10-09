@@ -23,11 +23,15 @@ const pem = generateKeyPairSync('rsa', { modulusLength: 2048 })
   .toString()
 let hcl: HclToolkit
 let envId: string
+let projectId: string
+const fetched: string[] = []
 
 const client = new GitHubClient(
   { id: '1', slug: 's', privateKey: pem, webhookSecret: SECRET },
   async (input) => {
     const p = new URL(String(input)).pathname
+    fetched.push(p)
+    if (p === '/repos/acme/infra/contents/broken') throw new TypeError('fetch failed')
     if (p.endsWith('/access_tokens'))
       return new Response(
         JSON.stringify({ token: 't', expires_at: new Date(Date.now() + 3_600_000).toISOString() }),
@@ -57,7 +61,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb(ORG)
   await db().delete(githubInstallation).where(eq(githubInstallation.installationId, INSTALLATION))
-  const projectId = await seedProject(ORG, 'p')
+  projectId = await seedProject(ORG, 'p')
   envId = (await createEnvironment(projectId, 'dev')).id
   await recordInstallation(INSTALLATION, 'acme')
   await linkRepository({
@@ -169,11 +173,46 @@ describe('handleWebhook', () => {
     expect(calls).toBe(1)
   })
 
-  it('follows a repository renamed event', async () => {
-    await deliver('repository', {
-      action: 'renamed',
-      repository: { id: 88, full_name: 'acme/renamed' }
+  it('skips a branch deletion without calling GitHub', async () => {
+    const before = fetched.length
+    const repository = { id: 88, full_name: 'acme/infra' }
+    expect(await deliver('push', { ref: 'refs/heads/main', deleted: true, repository })).toEqual({
+      status: 202,
+      synced: []
     })
-    expect((await linkSummary(envId))?.summary.repoFullName).toBe('acme/renamed')
+    expect(
+      await deliver('push', { ref: 'refs/heads/main', after: '0'.repeat(40), repository })
+    ).toEqual({ status: 202, synced: [] })
+    expect(fetched.length).toBe(before)
+  })
+
+  it('audits an uninstall once, not on a replayed or unknown delivery', async () => {
+    let count = 0
+    const audit = async () => {
+      count++
+    }
+    const body = { action: 'deleted', installation: { id: INSTALLATION } }
+    await deliver('installation', body, SECRET, audit)
+    await deliver('installation', body, SECRET, audit)
+    await deliver('installation', { action: 'deleted', installation: { id: 1 } }, SECRET, audit)
+    expect(count).toBe(1)
+  })
+
+  it('keeps syncing the other environments when one fails unexpectedly', async () => {
+    const second = (await createEnvironment(projectId, 'stg')).id
+    await linkRepository({
+      environmentId: second,
+      installationId: INSTALLATION,
+      repoId: 88,
+      repoFullName: 'acme/infra',
+      ref: 'main',
+      directory: 'broken'
+    })
+    const result = await deliver('push', {
+      ref: 'refs/heads/main',
+      repository: { id: 88, full_name: 'acme/infra' }
+    })
+    expect(result).toEqual({ status: 202, synced: [envId] })
+    expect((await linkSummary(envId))?.declared?.map((d) => d.name)).toEqual(['from_push'])
   })
 })

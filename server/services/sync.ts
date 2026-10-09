@@ -27,8 +27,13 @@ export async function recordInstallation(
     .onConflictDoUpdate({ target: githubInstallation.installationId, set: { accountLogin } })
 }
 
-export async function removeInstallation(installationId: number): Promise<void> {
-  await db().delete(githubInstallation).where(eq(githubInstallation.installationId, installationId))
+/** True when a row was removed, so a replayed delivery can be told from a real uninstall. */
+export async function removeInstallation(installationId: number): Promise<boolean> {
+  const removed = await db()
+    .delete(githubInstallation)
+    .where(eq(githubInstallation.installationId, installationId))
+    .returning()
+  return removed.length > 0
 }
 
 export async function listInstallations(): Promise<
