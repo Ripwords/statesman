@@ -24,6 +24,10 @@ import createToken from '../../server/api/ui/tokens.post'
 import deleteToken from '../../server/api/ui/tokens/[id].delete'
 import listEnvironments from '../../server/api/ui/projects/[id]/environments.get'
 import createEnvironment from '../../server/api/ui/projects/[id]/environments.post'
+import listMembers from '../../server/api/ui/projects/[id]/members.get'
+import addMember from '../../server/api/ui/projects/[id]/members.post'
+import changeMemberRole from '../../server/api/ui/projects/[id]/members/[userId].patch'
+import removeMember from '../../server/api/ui/projects/[id]/members/[userId].delete'
 import deleteEnvironment from '../../server/api/ui/environments/[id].delete'
 import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
@@ -170,6 +174,35 @@ const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
   [
     'DELETE /api/ui/environments/:id',
     (h) => deleteEnvironment(testEvent({ headers: h, params: { id: 'no-such-env' } })),
+    UNKNOWN_ENV
+  ],
+  [
+    'GET /api/ui/projects/:id/members',
+    (h, i) => listMembers(testEvent({ headers: h, params: { id: i.projectId } })),
+    READ
+  ],
+  [
+    'POST /api/ui/projects/:id/members',
+    (h, i) => addMember(testEvent({ headers: h, params: { id: i.projectId }, body: {} })),
+    OWN
+  ],
+  [
+    'PATCH /api/ui/projects/:id/members/:userId',
+    (h, i) =>
+      changeMemberRole(
+        testEvent({ headers: h, params: { id: i.projectId, userId: 'nobody' }, body: {} })
+      ),
+    OWN
+  ],
+  [
+    'DELETE /api/ui/projects/:id/members/:userId',
+    (h, i) =>
+      removeMember(testEvent({ headers: h, params: { id: i.projectId, userId: 'nobody' } })),
+    OWN
+  ],
+  [
+    'GET /api/ui/versions/:id (unknown version)',
+    (h) => readVersion(testEvent({ headers: h, params: { id: 'no-such-version' } })),
     UNKNOWN_ENV
   ],
   [
