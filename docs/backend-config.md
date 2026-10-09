@@ -140,10 +140,12 @@ Scope matching is exact string equality on `org/project`, never a prefix test â€
 a token for `acme/prod` cannot reach `acme/prod-2`.
 
 **Who can create, list and revoke.** Creating a token needs a deployment admin,
-or the owner of every project the token names. Any signed-in account can see and
-revoke the tokens it created on the Tokens page; admins see all of them. The
-Tokens entry in the navigation shows for admins, project owners and anyone who
-already holds a token.
+or the owner of every project the token names. Every signed-in account, admins
+included, sees and revokes only the tokens it created, on the Tokens page. To cut
+off someone else's tokens, remove them from the project, or have an admin delete
+or demote the account: their tokens stop working at once, because a token never
+outranks its creator. The Tokens entry in the navigation shows for admins,
+project owners and anyone who already holds a token.
 
 **A token never outranks its creator.** It stops working on a project when its
 creator no longer holds the role the request needs, and the request gets a 403

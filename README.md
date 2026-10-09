@@ -198,9 +198,10 @@ Owners must type the exact email of an existing account; there is no directory
 to browse, and an unknown email is refused. Anyone with a role on the project
 can see its member list. On the same tab an owner changes a member's role from
 the role select on their row, or removes them. A project may end up with no
-owner; an admin can always recover it, and the dashboard warns before the last
-owner is removed. **Users** shows each account's project count in its
-**Projects** column.
+owner; an admin can always recover it, and the dashboard asks for confirmation
+before the last owner is removed or demoted. On the **Users** page each
+member's row has an **N projects** button that opens the list of their projects
+and roles; an admin's row reads **All projects**.
 
 ### Upgrading
 
@@ -215,10 +216,12 @@ operations it may use, so a CI runner can be given far less than a person.
 - **Creating** a token needs a deployment admin, or an account that is an owner
   of every project the token names. A token with `all` scope (**All My
   Projects**) is admin-only.
-- **Listing and revoking:** any signed-in account sees the tokens it created on
-  the Tokens page and can revoke them. Admins see every token. The Tokens entry
-  in the navigation shows for admins, project owners and anyone who already
-  holds a token.
+- **Listing and revoking:** every signed-in account, admins included, sees and
+  revokes only the tokens it created, on the Tokens page. To cut off someone
+  else's tokens, remove them from the project, or have an admin delete or demote
+  the account: their tokens stop working at once, because a token never outranks
+  its creator. The Tokens entry in the navigation shows for admins, project
+  owners and anyone who already holds a token.
 - **A token never outranks its creator.** It stops working on a project when
   its creator no longer holds the role the request needs: reading state needs
   any role; writing, locking or deleting state needs editor; reading variables

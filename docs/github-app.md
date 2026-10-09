@@ -83,7 +83,9 @@ that owns it and nowhere else.
 
 An admin opens a project's **Variables** tab. The repository panel shows
 **Connect GitHub** while no installation is recorded. It sends the browser to
-GitHub to install the app and choose which repositories it may see.
+GitHub to install the app and choose which repositories it may see. Only
+**Connect GitHub** is admin-only: once the app is installed, linking an
+environment to a repository is open to the project's owners as well as admins.
 
 statesman records the installation in either of two ways, whichever arrives
 first. Both are safe to repeat:
@@ -209,7 +211,7 @@ text is stored on the link, so it stays until the next successful sync.
 | `GitHub did not answer in time.` | GitHub took longer than ten seconds to answer. Press **Sync now**. |
 | `GitHub sent an unexpected response.` | GitHub answered, but not with the data statesman reads. Usually transient; press **Sync now**. |
 | `The GitHub App private key could not sign a request. Check GITHUB_APP_PRIVATE_KEY.` | `GITHUB_APP_PRIVATE_KEY` is not a valid PEM private key, for example with its line breaks lost. See [step 2](#2-generate-the-private-key). |
-| `The repository link changed during the sync.`                    | An admin relinked the environment while a sync was running. The result was dropped so it could not land on the new link. Press **Sync now**.               |
+| `The repository link changed during the sync.`                    | An owner or admin relinked the environment while a sync was running. The result was dropped so it could not land on the new link. Press **Sync now**.               |
 | `The GitHub App no longer has access to this repository.`         | The repository was removed from the installation. Add it back under the installation's settings on GitHub, then press **Sync now**.                         |
 
 **Sync now** on an environment with no link answers 404 `This environment is not linked to a repository.` That is not stored on a link; the panel shows it as the action error. Link a repository first.
