@@ -10,6 +10,13 @@ import forceUnlock from '../../server/api/ui/projects/[id]/lock.delete'
 import listTokens from '../../server/api/ui/tokens.get'
 import createToken from '../../server/api/ui/tokens.post'
 import deleteToken from '../../server/api/ui/tokens/[id].delete'
+import listEnvironments from '../../server/api/ui/projects/[id]/environments.get'
+import createEnvironment from '../../server/api/ui/projects/[id]/environments.post'
+import deleteEnvironment from '../../server/api/ui/environments/[id].delete'
+import listVariables from '../../server/api/ui/environments/[id]/variables.get'
+import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
+import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
+import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
 import rollback from '../../server/api/admin/rollback.post'
 import retention from '../../server/api/admin/retention.post'
 
@@ -52,6 +59,26 @@ const ADMIN_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<
     'DELETE /api/ui/tokens/:id',
     (h) => deleteToken(testEvent({ headers: h, params: { id: 'k1' } }))
   ],
+  [
+    'POST /api/ui/projects/:id/environments',
+    (h) => createEnvironment(testEvent({ headers: h, params: { id: 'p1' }, body: { slug: 'x' } }))
+  ],
+  [
+    'DELETE /api/ui/environments/:id',
+    (h) => deleteEnvironment(testEvent({ headers: h, params: { id: 'e1' } }))
+  ],
+  [
+    'PUT /api/ui/environments/:id/variables/:name',
+    (h) => putVariable(testEvent({ headers: h, params: { id: 'e1', name: 'x' }, body: {} }))
+  ],
+  [
+    'DELETE /api/ui/environments/:id/variables/:name',
+    (h) => deleteVariable(testEvent({ headers: h, params: { id: 'e1', name: 'x' } }))
+  ],
+  [
+    'POST /api/ui/environments/:id/variables/import',
+    (h) => importVariables(testEvent({ headers: h, params: { id: 'e1' }, body: {} }))
+  ],
   ['POST /api/admin/rollback', (h) => rollback(testEvent({ headers: h, body: {} }))],
   ['POST /api/admin/retention', (h) => retention(testEvent({ headers: h }))]
 ]
@@ -87,6 +114,14 @@ const READ_ROUTES: Array<[string, (headers: Record<string, string>) => Promise<u
   [
     'GET /api/ui/versions/:id',
     (h) => readVersion(testEvent({ headers: h, params: { id: '01ABC' } }))
+  ],
+  [
+    'GET /api/ui/projects/:id/environments',
+    (h) => listEnvironments(testEvent({ headers: h, params: { id: 'p1' } }))
+  ],
+  [
+    'GET /api/ui/environments/:id/variables',
+    (h) => listVariables(testEvent({ headers: h, params: { id: 'e1' } }))
   ]
 ]
 

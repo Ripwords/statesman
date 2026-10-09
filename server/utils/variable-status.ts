@@ -76,3 +76,12 @@ export function mergeVariables(
     return rank(a) - rank(b) || byName
   })
 }
+
+export type LinkSummary = {
+  repoFullName: string
+  ref: string
+  directory: string
+  lastSyncedAt: string | null
+  lastSyncedSha: string | null
+  lastSyncError: string | null
+}
