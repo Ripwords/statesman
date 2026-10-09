@@ -97,3 +97,28 @@ describe('serverless detection', () => {
     expect(loadEnv({ ...base } as NodeJS.ProcessEnv).IS_SERVERLESS).toBe(false)
   })
 })
+
+describe('GitHub App configuration', () => {
+  const app = {
+    GITHUB_APP_ID: '123',
+    GITHUB_APP_SLUG: 'statesman-acme',
+    GITHUB_APP_PRIVATE_KEY: '-----BEGIN RSA PRIVATE KEY-----\\nabc\\n-----END RSA PRIVATE KEY-----',
+    GITHUB_APP_WEBHOOK_SECRET: 'whsec'
+  }
+
+  it('is null when none are set', () => {
+    expect(loadEnv(base as NodeJS.ProcessEnv).GITHUB_APP).toBeNull()
+  })
+
+  it('is loaded when all are set, with \\n unescaped in the key', () => {
+    const loaded = loadEnv({ ...base, ...app } as NodeJS.ProcessEnv).GITHUB_APP
+    expect(loaded?.privateKey).toContain('\nabc\n')
+    expect(loaded?.slug).toBe('statesman-acme')
+  })
+
+  it('names the missing ones when only some are set', () => {
+    expect(() => loadEnv({ ...base, GITHUB_APP_ID: '123' } as NodeJS.ProcessEnv)).toThrow(
+      /GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET/
+    )
+  })
+})

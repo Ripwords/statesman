@@ -66,7 +66,11 @@ const schema = z
     RETENTION_KEEP_VERSIONS: z.coerce.number().int().positive().default(100),
     RETENTION_KEEP_DAYS: z.coerce.number().int().positive().default(30),
     VERCEL: z.string().optional(),
-    AWS_LAMBDA_FUNCTION_NAME: z.string().optional()
+    AWS_LAMBDA_FUNCTION_NAME: z.string().optional(),
+    GITHUB_APP_ID: z.string().optional(),
+    GITHUB_APP_SLUG: z.string().optional(),
+    GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+    GITHUB_APP_WEBHOOK_SECRET: z.string().optional()
   })
   .superRefine((v, ctx) => {
     // `||` not `??`: VERCEL='' is defined but falsy, and `??` would stop there
@@ -82,7 +86,29 @@ const schema = z
     if (v.STORAGE_DRIVER === 's3' && !v.S3_BUCKET) {
       ctx.addIssue({ code: 'custom', message: 'S3_BUCKET is required when STORAGE_DRIVER=s3' })
     }
+    // All or none (variables spec §9). A partial set is almost always a
+    // half-finished setup, and running with GitHub silently off would hide it.
+    const github = [
+      'GITHUB_APP_ID',
+      'GITHUB_APP_SLUG',
+      'GITHUB_APP_PRIVATE_KEY',
+      'GITHUB_APP_WEBHOOK_SECRET'
+    ] as const
+    const missing = github.filter((k) => !v[k])
+    if (missing.length > 0 && missing.length < github.length) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `GitHub App configuration is incomplete. Set all four or none; missing: ${missing.join(', ')}`
+      })
+    }
   })
+
+export type GitHubAppConfig = {
+  id: string
+  slug: string
+  privateKey: string
+  webhookSecret: string
+}
 
 export type Env = {
   DATABASE_URL: string
@@ -102,6 +128,7 @@ export type Env = {
   RETENTION_KEEP_VERSIONS: number
   RETENTION_KEEP_DAYS: number
   IS_SERVERLESS: boolean
+  GITHUB_APP: GitHubAppConfig | null
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -130,7 +157,21 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     CRON_SECRET: v.CRON_SECRET,
     RETENTION_KEEP_VERSIONS: v.RETENTION_KEEP_VERSIONS,
     RETENTION_KEEP_DAYS: v.RETENTION_KEEP_DAYS,
-    IS_SERVERLESS: Boolean(v.VERCEL || v.AWS_LAMBDA_FUNCTION_NAME)
+    IS_SERVERLESS: Boolean(v.VERCEL || v.AWS_LAMBDA_FUNCTION_NAME),
+    GITHUB_APP:
+      v.GITHUB_APP_ID &&
+      v.GITHUB_APP_SLUG &&
+      v.GITHUB_APP_PRIVATE_KEY &&
+      v.GITHUB_APP_WEBHOOK_SECRET
+        ? {
+            id: v.GITHUB_APP_ID,
+            slug: v.GITHUB_APP_SLUG,
+            // Hosting panels take one line; a PEM pasted there arrives with
+            // literal \n sequences.
+            privateKey: v.GITHUB_APP_PRIVATE_KEY.replaceAll('\\n', '\n'),
+            webhookSecret: v.GITHUB_APP_WEBHOOK_SECRET
+          }
+        : null
   }
 }
 
