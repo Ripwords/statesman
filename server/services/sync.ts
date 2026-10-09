@@ -36,9 +36,9 @@ export async function removeInstallation(installationId: number): Promise<boolea
   return removed.length > 0
 }
 
-export async function listInstallations(): Promise<
-  Array<{ installationId: number; accountLogin: string }>
-> {
+export type InstallationSummary = { installationId: number; accountLogin: string }
+
+export async function listInstallations(): Promise<InstallationSummary[]> {
   return db()
     .select({
       installationId: githubInstallation.installationId,

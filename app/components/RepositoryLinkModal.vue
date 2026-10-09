@@ -1,17 +1,18 @@
 <script setup lang="ts">
+import type { InstallationSummary } from '~~/server/services/sync'
 import { firstSyncFailure } from '~/utils/repository-link'
 import { statusMessageOf } from '~/utils/status-message'
 
 const props = defineProps<{
   environmentId: string
-  installations: Array<{ installationId: number; accountLogin: string }>
+  installations: InstallationSummary[]
 }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ linked: [] }>()
 
 const requestFetch = useRequestFetch()
 
-const chosenInstallation = ref<number | undefined>(undefined)
+const chosenInstallation = ref<number | undefined>(props.installations[0]?.installationId)
 const installationId = computed(
   () => chosenInstallation.value ?? props.installations[0]?.installationId ?? null
 )
@@ -30,7 +31,7 @@ const {
     open.value && installationId.value !== null
       ? await requestFetch(`/api/ui/github/installations/${installationId.value}/repositories`)
       : null,
-  { watch: [open, installationId] }
+  { watch: [open] }
 )
 const repositoryItems = computed(() =>
   (repositories.value ?? []).map((r) => ({ label: r.fullName, value: r.id }))
@@ -45,6 +46,9 @@ const defaultBranch = computed(
 
 const pending = ref(false)
 const formError = ref<string | null>(null)
+// The link row exists once the PUT answers, even when the first sync failed, so a
+// second submit would only repeat it. This state ends the form instead.
+const linkedWithError = ref(false)
 
 watch(installationId, () => {
   repoId.value = undefined
@@ -69,7 +73,10 @@ async function submit() {
     })
     emit('linked')
     if (result.ok) open.value = false
-    else formError.value = firstSyncFailure(result.error)
+    else {
+      linkedWithError.value = true
+      formError.value = firstSyncFailure(result.error)
+    }
   } catch (error) {
     formError.value = statusMessageOf(
       error,
@@ -83,6 +90,7 @@ async function submit() {
 watch(open, (isOpen) => {
   if (isOpen) return
   formError.value = null
+  linkedWithError.value = false
   repoId.value = undefined
   branch.value = ''
   directory.value = ''
@@ -101,6 +109,7 @@ watch(open, (isOpen) => {
         <UFormField v-if="installations.length > 1" label="GitHub Account">
           <USelect
             v-model="chosenInstallation"
+            :disabled="linkedWithError"
             :items="installationOptions"
             :placeholder="installationOptions[0]?.label"
             class="w-full"
@@ -110,6 +119,7 @@ watch(open, (isOpen) => {
         <UFormField label="Repository" required>
           <USelectMenu
             v-model="repoId"
+            :disabled="linkedWithError"
             :items="repositoryItems"
             value-key="value"
             :loading="repositoriesStatus === 'pending'"
@@ -128,6 +138,7 @@ watch(open, (isOpen) => {
         <UFormField label="Branch" description="Leave empty to follow the default branch.">
           <UInput
             v-model="branch"
+            :disabled="linkedWithError"
             :placeholder="defaultBranch"
             autocomplete="off"
             autocapitalize="none"
@@ -139,6 +150,7 @@ watch(open, (isOpen) => {
         <UFormField label="Directory">
           <UInput
             v-model="directory"
+            :disabled="linkedWithError"
             placeholder="envs/prod (empty for the repository root)"
             autocomplete="off"
             autocapitalize="none"
@@ -150,14 +162,16 @@ watch(open, (isOpen) => {
         <div aria-live="polite">
           <UAlert
             v-if="formError"
-            color="error"
+            :color="linkedWithError ? 'warning' : 'error'"
             variant="subtle"
             icon="i-lucide-triangle-alert"
             :description="formError"
           />
         </div>
 
+        <UButton v-if="linkedWithError" label="Done" icon="i-lucide-check" @click="open = false" />
         <UButton
+          v-else
           type="submit"
           :loading="pending"
           :label="pending ? 'Linking…' : 'Link Repository'"

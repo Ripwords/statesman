@@ -15,6 +15,7 @@ const unlinkOpen = ref(false)
 const syncing = ref(false)
 const unlinking = ref(false)
 const actionError = ref<string | null>(null)
+const unlinkError = ref<string | null>(null)
 
 async function syncNow() {
   syncing.value = true
@@ -34,15 +35,20 @@ async function syncNow() {
   }
 }
 
+function openUnlink() {
+  unlinkError.value = null
+  unlinkOpen.value = true
+}
+
 async function unlink() {
   unlinking.value = true
-  actionError.value = null
+  unlinkError.value = null
   try {
     await $fetch(`/api/ui/environments/${props.environmentId}/link`, { method: 'DELETE' })
     unlinkOpen.value = false
     emit('changed')
   } catch (error) {
-    actionError.value = statusMessageOf(
+    unlinkError.value = statusMessageOf(
       error,
       'Could not unlink. Check your connection, then try again.'
     )
@@ -113,7 +119,7 @@ onBeforeUnmount(() => {
               size="sm"
               color="error"
               variant="ghost"
-              @click="unlinkOpen = true"
+              @click="openUnlink"
             />
           </div>
         </AdminOnly>
@@ -171,11 +177,11 @@ onBeforeUnmount(() => {
             </p>
             <div aria-live="polite">
               <UAlert
-                v-if="actionError"
+                v-if="unlinkError"
                 color="error"
                 variant="subtle"
                 icon="i-lucide-triangle-alert"
-                :description="actionError"
+                :description="unlinkError"
               />
             </div>
           </div>
