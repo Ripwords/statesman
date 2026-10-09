@@ -2,9 +2,10 @@ import { existsSync } from 'node:fs'
 import { ulid } from 'ulid'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { schema, organization, project } from '../server/db/schema'
 import { projectSlug } from '../shared/schemas/project'
+import { ensureAccessRecordIn } from '../server/db/access-record'
 
 // Run outside Nitro, so nothing has loaded .env yet.
 if (existsSync('.env')) process.loadEnvFile('.env')
@@ -61,6 +62,18 @@ for (const slug of projectSlugs) {
     // error, and adding a project later means re-running with a longer list.
     .onConflictDoNothing({ target: [project.orgId, project.slug] })
     .returning()
+
+  // Every project needs its access row before anyone can be given a role on it
+  // (spec §4). Run for an existing project too, so a re-run repairs one seeded
+  // before the row existed.
+  const [row] =
+    inserted.length > 0
+      ? inserted
+      : await db
+          .select()
+          .from(project)
+          .where(and(eq(project.orgId, orgId), eq(project.slug, slug)))
+  if (row) await ensureAccessRecordIn(db, row.id, slug)
 
   console.log(
     inserted.length > 0

@@ -2,15 +2,8 @@ import type { H3Event } from 'h3'
 import { and, eq } from 'drizzle-orm'
 import { createAccessControl } from 'better-auth/plugins/access'
 import { db } from '../db/client'
-import {
-  environment,
-  organization,
-  project,
-  projectAccess,
-  projectMember,
-  stateVersion,
-  user
-} from '../db/schema'
+import { ensureAccessRecordIn } from '../db/access-record'
+import { environment, organization, project, projectMember, stateVersion, user } from '../db/schema'
 import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
 import type { EffectiveRole, ProjectPermission } from '../../shared/project-permissions'
 import { isAdmin, roleOf, type UserRole } from '../../shared/schemas/user'
@@ -177,10 +170,7 @@ export async function projectIdOfVersion(versionId: string): Promise<string> {
  * between the two inserts). Idempotent.
  */
 export async function ensureAccessRecord(projectId: string, name: string): Promise<void> {
-  await db()
-    .insert(projectAccess)
-    .values({ id: projectId, name, slug: projectId })
-    .onConflictDoNothing({ target: projectAccess.id })
+  await ensureAccessRecordIn(db(), projectId, name)
 }
 
 /**
