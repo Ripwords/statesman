@@ -6,8 +6,11 @@
  * server-side, and this component only decides what the page says while that is
  * true — a member who types the URL should read a sentence, not watch a table
  * fail to load. Saying why, and who can help, beats a bare "denied".
+ *
+ * `quiet` renders nothing for a member: for a button inside a page that is
+ * otherwise readable, an "Admins Only" panel would be louder than the control.
  */
-defineProps<{ what: string }>()
+defineProps<{ what?: string; quiet?: boolean }>()
 
 const { isAdmin } = useAuth()
 </script>
@@ -15,9 +18,9 @@ const { isAdmin } = useAuth()
 <template>
   <slot v-if="isAdmin" />
   <EmptyState
-    v-else
+    v-else-if="!quiet"
     icon="i-lucide-lock"
     title="Admins Only"
-    :description="`${what} is limited to admin accounts. Your account is a member, which can read every project, version and diff. Ask an admin to make the change, or to change your role.`"
+    :description="`${what ?? 'This'} is limited to admin accounts. Your account is a member, which can read every project, version and diff. Ask an admin to make the change, or to change your role.`"
   />
 </template>

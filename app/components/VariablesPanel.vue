@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { FetchError } from 'ofetch'
 import type { TableColumn } from '@nuxt/ui'
+import { statusMessageOf } from '~/utils/status-message'
 import { formatValue } from '~/utils/variable-value'
 
 const props = defineProps<{ projectId: string }>()
@@ -29,17 +29,24 @@ const envOptions = computed(() =>
   (environments.value ?? []).map((e) => ({ label: e.slug, value: e.slug }))
 )
 
+// `useFetch` forwards the session cookie during SSR on its own; a bare `$fetch`
+// does not, and the server would answer "Sign in required".
+const requestFetch = useRequestFetch()
 const {
   data: variables,
   error: variablesError,
   refresh: refreshVariables
-} = await useFetch(() => `/api/ui/environments/${envId.value}/variables`, {
-  immediate: envId.value !== null,
-  watch: [envId]
-})
+} = await useAsyncData(
+  () => `variables:${envId.value}`,
+  // No environment, no request: `useFetch` cannot express "skip", and a null id
+  // would otherwise be sent as `/environments/null/variables`.
+  async () =>
+    envId.value ? await requestFetch(`/api/ui/environments/${envId.value}/variables`) : null
+)
 type Row = NonNullable<typeof variables.value>['rows'][number]
 
 const rows = computed(() => variables.value?.rows ?? [])
+const storedCount = computed(() => rows.value.filter((r) => r.stored).length)
 const showStatus = computed(() => rows.value.some((r) => r.status !== null))
 
 const columns = computed<TableColumn<Row>[]>(() => [
@@ -93,10 +100,7 @@ function openEdit(row: Row) {
 }
 
 function failure(error: unknown): string {
-  return (
-    (error instanceof FetchError ? error.statusMessage : undefined) ??
-    'Could not delete. Check your connection, then try again.'
-  )
+  return statusMessageOf(error, 'Could not delete. Check your connection, then try again.')
 }
 
 async function removeVariable() {
@@ -124,8 +128,10 @@ async function removeEnvironment() {
   try {
     await $fetch(`/api/ui/environments/${envId.value}`, { method: 'DELETE' })
     deleteEnvOpen.value = false
-    await navigateTo({ query: { ...route.query, env: undefined } })
+    // Refresh first, so the next selection is a real environment and the panel
+    // never targets the deleted id while the list is stale.
     await refreshEnvironments()
+    await navigateTo({ query: { ...route.query, env: undefined } })
   } catch (error) {
     deleteError.value = failure(error)
   } finally {
@@ -153,12 +159,9 @@ const curl = computed(
       title="No environments yet"
       description="An environment holds one set of variables, such as staging or production. Create one to start adding values."
     >
-      <UButton
-        v-if="isAdmin"
-        label="New environment"
-        icon="i-lucide-plus"
-        @click="createEnvOpen = true"
-      />
+      <AdminOnly quiet>
+        <UButton label="New environment" icon="i-lucide-plus" @click="createEnvOpen = true" />
+      </AdminOnly>
     </EmptyState>
 
     <template v-else>
@@ -173,33 +176,35 @@ const curl = computed(
           aria-label="Environment"
           class="w-48"
         />
-        <div v-if="isAdmin" class="ms-auto flex flex-wrap items-center gap-2">
-          <UButton label="Add variable" icon="i-lucide-plus" size="sm" @click="openAdd" />
-          <UButton
-            label="Import"
-            icon="i-lucide-upload"
-            size="sm"
-            color="neutral"
-            variant="outline"
-            @click="importOpen = true"
-          />
-          <UButton
-            label="New environment"
-            icon="i-lucide-layers"
-            size="sm"
-            color="neutral"
-            variant="outline"
-            @click="createEnvOpen = true"
-          />
-          <UButton
-            label="Delete environment"
-            icon="i-lucide-trash-2"
-            size="sm"
-            color="error"
-            variant="ghost"
-            @click="deleteEnvOpen = true"
-          />
-        </div>
+        <AdminOnly quiet>
+          <div class="ms-auto flex flex-wrap items-center gap-2">
+            <UButton label="Add variable" icon="i-lucide-plus" size="sm" @click="openAdd" />
+            <UButton
+              label="Import"
+              icon="i-lucide-upload"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              @click="importOpen = true"
+            />
+            <UButton
+              label="New environment"
+              icon="i-lucide-layers"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              @click="createEnvOpen = true"
+            />
+            <UButton
+              label="Delete environment"
+              icon="i-lucide-trash-2"
+              size="sm"
+              color="error"
+              variant="ghost"
+              @click="deleteEnvOpen = true"
+            />
+          </div>
+        </AdminOnly>
       </div>
 
       <UAlert
@@ -208,7 +213,7 @@ const curl = computed(
         variant="subtle"
         icon="i-lucide-triangle-alert"
         title="Could not load variables"
-        description="The server did not answer."
+        :description="statusMessageOf(variablesError, 'The server did not answer.')"
       >
         <template #actions>
           <UButton color="error" variant="outline" label="Retry" @click="refreshVariables()" />
@@ -366,8 +371,12 @@ const curl = computed(
       <template #body>
         <div class="space-y-3">
           <p class="text-sm text-muted text-pretty">
-            This deletes <span class="font-mono" translate="no">{{ env?.slug }}</span> and its
-            {{ rows.filter((r) => r.stored).length }} stored variables. This cannot be undone.
+            This deletes <span class="font-mono" translate="no">{{ env?.slug }}</span>
+            <template v-if="!variablesError">
+              and its {{ storedCount }} stored {{ storedCount === 1 ? 'variable' : 'variables' }}.
+            </template>
+            <template v-else>and everything stored in it.</template>
+            This cannot be undone.
           </p>
           <div aria-live="polite">
             <UAlert

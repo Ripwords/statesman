@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { FetchError } from 'ofetch'
 import type { ImportVariablesInput } from '~~/shared/schemas/variable'
+import { statusMessageOf } from '~/utils/status-message'
 
 const props = defineProps<{ environmentId: string }>()
 const open = defineModel<boolean>('open', { required: true })
@@ -66,9 +66,7 @@ async function send(dryRun: boolean) {
       open.value = false
     }
   } catch (e) {
-    error.value =
-      (e instanceof FetchError ? e.statusMessage : undefined) ??
-      'Could not import. Check your connection, then try again.'
+    error.value = statusMessageOf(e, 'Could not import. Check your connection, then try again.')
   } finally {
     pending.value = false
   }

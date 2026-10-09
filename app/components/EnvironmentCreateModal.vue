@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
-import { FetchError } from 'ofetch'
+import { statusMessageOf } from '~/utils/status-message'
 import { createEnvironmentSchema } from '~~/shared/schemas/variable'
 
 type CreateEnvironmentInput = { slug: string }
@@ -24,10 +24,10 @@ async function onSubmit(event: FormSubmitEvent<CreateEnvironmentInput>) {
     emit('created', { id: created.id, slug: created.slug })
     open.value = false
   } catch (error) {
-    const detail = error instanceof FetchError ? error.statusMessage : undefined
-    formError.value =
-      detail ??
+    formError.value = statusMessageOf(
+      error,
       'Could not create the environment. Check that you are still signed in, then try again.'
+    )
   } finally {
     pending.value = false
   }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
-import { FetchError } from 'ofetch'
 import { z } from 'zod'
 import type { VariableRow } from '~~/server/utils/variable-status'
 import { setVariableSchema, variableNameSchema } from '~~/shared/schemas/variable'
+import { statusMessageOf } from '~/utils/status-message'
 import { formatValue, parseEditorValue } from '~/utils/variable-value'
 
 const props = defineProps<{
@@ -83,9 +83,10 @@ async function onSubmit(event: FormSubmitEvent<FormState>) {
     emit('saved')
     open.value = false
   } catch (error) {
-    const detail = error instanceof FetchError ? error.statusMessage : undefined
-    formError.value =
-      detail ?? 'Could not save the variable. Check your connection, then try again.'
+    formError.value = statusMessageOf(
+      error,
+      'Could not save the variable. Check your connection, then try again.'
+    )
   } finally {
     pending.value = false
   }
