@@ -46,6 +46,14 @@ const readVariables = computed<boolean>({
   }
 })
 
+const form = useTemplateRef('form')
+watch(
+  () => state.varActions,
+  (granted) => {
+    if (granted?.length) form.value?.clear('actions')
+  }
+)
+
 const actionOptions: { label: string; value: StateAction; description: string }[] = [
   { label: 'Read State', value: 'read', description: 'Required for terraform plan' },
   { label: 'Write State', value: 'write', description: 'Required for terraform apply' },
@@ -86,6 +94,7 @@ function onError(event: FormErrorEvent) {
 
 <template>
   <UForm
+    ref="form"
     :schema="tokenConfigSchema"
     :state="state"
     class="space-y-6"

@@ -133,7 +133,8 @@ and is the only kill switch — there is no reversible disable.
 
 | Control | Effect |
 |---|---|
-| Allowed operations | `read`, `write`, `delete`, `lock`. A `plan` needs read and lock; an `apply` needs write too |
+| Allowed operations | `read`, `write`, `delete`, `lock`. A `plan` needs read and lock; an `apply` needs write too. May be left empty for a variables-only token, but at least one permission, here or under Variables, must be granted |
+| Variables | *Read Variables* lets the token download the project's variables as a tfvars file, sensitive values included |
 | Project scope | *Scoped* (recommended) lists exact `org/project` pairs; *account-wide* covers every project the owner can reach |
 | Expiry | Optional, up to 3650 days |
 | Rate limit | Defaults to 120 requests/minute per key. One `apply` costs roughly 4–6 requests and a `plan` about 3 |
