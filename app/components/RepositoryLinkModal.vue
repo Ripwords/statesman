@@ -135,7 +135,10 @@ watch(open, (isOpen) => {
           :description="statusMessageOf(repositoriesError, 'Could not list repositories.')"
         />
 
-        <UFormField label="Branch" description="Leave empty to follow the default branch.">
+        <UFormField
+          label="Branch"
+          description="Leave empty to use the default branch. The link keeps that branch if the default changes later."
+        >
           <UInput
             v-model="branch"
             :disabled="linkedWithError"

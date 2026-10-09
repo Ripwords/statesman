@@ -123,7 +123,9 @@ only). Fill in:
 
 - **GitHub Account**: shown only when more than one installation exists.
 - **Repository**: any repository the installation can see.
-- **Branch**: leave empty to follow the repository's default branch.
+- **Branch**: leave empty to use the repository's default branch at the time
+  of linking. statesman stores that branch's name, so if the default branch
+  changes on GitHub later, the link keeps the old one. Link again to switch.
 - **Directory**: the folder that holds the root module, for example
   `envs/prod`. Leave empty for the repository root. It may not contain `.` or
   `..` segments.
