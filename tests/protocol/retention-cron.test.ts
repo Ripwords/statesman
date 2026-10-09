@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { $fetch, setup } from '@nuxt/test-utils/e2e'
 
+// `$fetch<unknown, string>` throughout: left to infer, Nitro's typed `$fetch`
+// computes the response type across every route, and with this route table
+// TypeScript overflows its stack depth (TS2321). These tests assert on raw
+// responses, so they opt out; calls whose typed result is used keep inference.
+
 const CRON_SECRET = 'test-cron-secret-that-is-long-enough'
 
 // A server configured the way a Vercel deployment is: CRON_SECRET set, so the
@@ -15,7 +20,7 @@ await setup({ server: true, env: { CRON_SECRET } })
  */
 describe('GET /api/admin/retention', () => {
   it('runs for a caller carrying the cron secret', async () => {
-    const result = await $fetch('/api/admin/retention', {
+    const result = await $fetch<unknown, string>('/api/admin/retention', {
       headers: { authorization: `Bearer ${CRON_SECRET}` }
     })
     // The same shape the manual POST returns; the point is that it ran.
@@ -24,17 +29,23 @@ describe('GET /api/admin/retention', () => {
 
   it('accepts the scheme in any case, because HTTP says it is case-insensitive', async () => {
     await expect(
-      $fetch('/api/admin/retention', { headers: { authorization: `bearer ${CRON_SECRET}` } })
+      $fetch<unknown, string>('/api/admin/retention', {
+        headers: { authorization: `bearer ${CRON_SECRET}` }
+      })
     ).resolves.toBeTypeOf('object')
   })
 
   it('refuses a request with no Authorization header', async () => {
-    await expect($fetch('/api/admin/retention')).rejects.toMatchObject({ statusCode: 401 })
+    await expect($fetch<unknown, string>('/api/admin/retention')).rejects.toMatchObject({
+      statusCode: 401
+    })
   })
 
   it('refuses the wrong secret', async () => {
     await expect(
-      $fetch('/api/admin/retention', { headers: { authorization: 'Bearer wrong' } })
+      $fetch<unknown, string>('/api/admin/retention', {
+        headers: { authorization: 'Bearer wrong' }
+      })
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 
@@ -42,7 +53,9 @@ describe('GET /api/admin/retention', () => {
     // No cookie is sent here, but the point is the GET does not consult one at
     // all: a signed-in admin still needs the secret on this route.
     await expect(
-      $fetch('/api/admin/retention', { headers: { cookie: 'better-auth.session_token=whatever' } })
+      $fetch<unknown, string>('/api/admin/retention', {
+        headers: { cookie: 'better-auth.session_token=whatever' }
+      })
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 })

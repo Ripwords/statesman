@@ -112,8 +112,11 @@ export function terraformAcceptance(options: ScenarioOptions): void {
 
   const basicAuth = (): string => `Basic ${Buffer.from(`statesman:${token}`).toString('base64')}`
 
+  // Explicit type arguments on purpose: inferring the request type makes
+  // TypeScript match this path against every Nitro route, which overflows its
+  // stack depth (TS2321) once the route table is large enough.
   const asHolder = (method: 'POST' | 'DELETE'): Promise<unknown> =>
-    $fetch(`/api/tf/${options.org}/${PROJECT}/lock`, {
+    $fetch<unknown, string>(`/api/tf/${options.org}/${PROJECT}/lock`, {
       method,
       headers: { authorization: basicAuth() },
       body: { ID: HOLDER_LOCK_ID, Who: HOLDER, Operation: 'OperationTypeApply' }

@@ -8,6 +8,11 @@ import { auditLog, organization } from '../../server/db/schema'
 import { acquireLock, currentLock } from '../../server/services/lock'
 import { seedProject, resetDb, provisionUser } from './helpers'
 
+// `$fetch<unknown, string>` throughout: left to infer, Nitro's typed `$fetch`
+// computes the response type across every route, and with this route table
+// TypeScript overflows its stack depth (TS2321). These tests assert on raw
+// responses, so they opt out; calls whose typed result is used keep inference.
+
 await setup({ server: true })
 
 let token: string
@@ -79,29 +84,45 @@ beforeEach(async () => {
 
 describe('terraform protocol', () => {
   it('returns 401 without credentials', async () => {
-    await expect($fetch(url)).rejects.toMatchObject({ statusCode: 401 })
+    await expect($fetch<unknown, string>(url)).rejects.toMatchObject({ statusCode: 401 })
   })
 
   it('returns 404 when no state exists yet', async () => {
-    await expect($fetch(url, { headers: authHeader() })).rejects.toMatchObject({ statusCode: 404 })
+    await expect($fetch<unknown, string>(url, { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 404
+    })
   })
 
   it('completes a full lock, write, read, unlock cycle', async () => {
     const lock = { ID: 'lock-1', Who: 'jj@laptop', Operation: 'OperationTypeApply' }
-    await $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: lock })
-    await $fetch(`${url}?ID=lock-1`, { method: 'POST', headers: authHeader(), body: state(1) })
-    expect(await $fetch(url, { headers: authHeader() })).toMatchObject({ serial: 1 })
-    await $fetch(`${url}/lock`, { method: 'DELETE', headers: authHeader(), body: lock })
+    await $fetch<unknown, string>(`${url}/lock`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: lock
+    })
+    await $fetch<unknown, string>(`${url}?ID=lock-1`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: state(1)
+    })
+    expect(await $fetch<unknown, string>(url, { headers: authHeader() })).toMatchObject({
+      serial: 1
+    })
+    await $fetch<unknown, string>(`${url}/lock`, {
+      method: 'DELETE',
+      headers: authHeader(),
+      body: lock
+    })
   })
 
   it('returns 423 with holder info when the lock is held', async () => {
-    await $fetch(`${url}/lock`, {
+    await $fetch<unknown, string>(`${url}/lock`, {
       method: 'POST',
       headers: authHeader(),
       body: { ID: 'a', Who: 'jj' }
     })
     await expect(
-      $fetch(`${url}/lock`, {
+      $fetch<unknown, string>(`${url}/lock`, {
         method: 'POST',
         headers: authHeader(),
         body: { ID: 'b', Who: 'other' }
@@ -110,16 +131,30 @@ describe('terraform protocol', () => {
   })
 
   it('returns 409 for a write with the wrong lock id', async () => {
-    await $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'a' } })
+    await $fetch<unknown, string>(`${url}/lock`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: { ID: 'a' }
+    })
     await expect(
-      $fetch(`${url}?ID=wrong`, { method: 'POST', headers: authHeader(), body: state(1) })
+      $fetch<unknown, string>(`${url}?ID=wrong`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: state(1)
+      })
       // Spec §11: the 409 body carries the lock info too, not just the status.
     ).rejects.toMatchObject({ statusCode: 409, data: expect.objectContaining({ ID: 'a' }) })
   })
 
   it('allows an unlocked write', async () => {
-    await $fetch(`${url}`, { method: 'POST', headers: authHeader(), body: state(1) })
-    expect(await $fetch(url, { headers: authHeader() })).toMatchObject({ serial: 1 })
+    await $fetch<unknown, string>(`${url}`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: state(1)
+    })
+    expect(await $fetch<unknown, string>(url, { headers: authHeader() })).toMatchObject({
+      serial: 1
+    })
   })
 
   it('accepts the LOCK and UNLOCK verbs as well', async () => {
@@ -128,7 +163,11 @@ describe('terraform protocol', () => {
     expect(locked.status).toBe(200)
 
     await expect(
-      $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'w' } })
+      $fetch<unknown, string>(`${url}/lock`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: { ID: 'w' }
+      })
     ).rejects.toMatchObject({ statusCode: 423 })
 
     const unlocked = await lockVerb('UNLOCK', 'v')
@@ -138,25 +177,33 @@ describe('terraform protocol', () => {
 
   it('returns 403 for a project outside the token scope', async () => {
     await seedProject('acme', 'staging')
-    await expect($fetch('/api/tf/acme/staging', { headers: authHeader() })).rejects.toMatchObject({
+    await expect(
+      $fetch<unknown, string>('/api/tf/acme/staging', { headers: authHeader() })
+    ).rejects.toMatchObject({
       statusCode: 403
     })
   })
 
   it('returns 404 for an unknown project', async () => {
-    await expect($fetch('/api/tf/acme/nope', { headers: authHeader() })).rejects.toMatchObject({
+    await expect(
+      $fetch<unknown, string>('/api/tf/acme/nope', { headers: authHeader() })
+    ).rejects.toMatchObject({
       statusCode: 404
     })
   })
 
   it('deletes state', async () => {
-    await $fetch(url, { method: 'POST', headers: authHeader(), body: state(1) })
-    await $fetch(url, { method: 'DELETE', headers: authHeader() })
-    await expect($fetch(url, { headers: authHeader() })).rejects.toMatchObject({ statusCode: 404 })
+    await $fetch<unknown, string>(url, { method: 'POST', headers: authHeader(), body: state(1) })
+    await $fetch<unknown, string>(url, { method: 'DELETE', headers: authHeader() })
+    await expect($fetch<unknown, string>(url, { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 404
+    })
   })
 
   it('returns 401 for a key that does not exist', async () => {
-    await expect($fetch(url, { headers: basicHeader('sm_not_a_real_key') })).rejects.toMatchObject({
+    await expect(
+      $fetch<unknown, string>(url, { headers: basicHeader('sm_not_a_real_key') })
+    ).rejects.toMatchObject({
       statusCode: 401
     })
   })
@@ -165,18 +212,22 @@ describe('terraform protocol', () => {
     // The credential is good — it reads fine — so a refused DELETE must not
     // read as "Invalid API key" and send an operator off rotating it.
     expect(
-      await $fetch(url, { method: 'POST', headers: authHeader(), body: state(1) })
+      await $fetch<unknown, string>(url, { method: 'POST', headers: authHeader(), body: state(1) })
     ).toMatchObject({ ok: true })
-    expect(await $fetch(url, { headers: basicHeader(readOnlyToken) })).toMatchObject({ serial: 1 })
+    expect(
+      await $fetch<unknown, string>(url, { headers: basicHeader(readOnlyToken) })
+    ).toMatchObject({ serial: 1 })
 
     await expect(
-      $fetch(url, { method: 'DELETE', headers: basicHeader(readOnlyToken) })
+      $fetch<unknown, string>(url, { method: 'DELETE', headers: basicHeader(readOnlyToken) })
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 
   it('answers 401 before 404, so an anonymous caller cannot enumerate projects', async () => {
-    const known = await $fetch(url).catch((error: unknown) => error)
-    const unknown = await $fetch('/api/tf/acme/nope').catch((error: unknown) => error)
+    const known = await $fetch<unknown, string>(url).catch((error: unknown) => error)
+    const unknown = await $fetch<unknown, string>('/api/tf/acme/nope').catch(
+      (error: unknown) => error
+    )
     expect(known).toMatchObject({ statusCode: 401 })
     expect(unknown).toMatchObject({ statusCode: 401 })
   })
@@ -190,21 +241,27 @@ describe('admin endpoints', () => {
    * covers the configured deployment.
    */
   it('has no cron retention route when CRON_SECRET is unset', async () => {
-    await expect($fetch('/api/admin/retention')).rejects.toMatchObject({ statusCode: 404 })
+    await expect($fetch<unknown, string>('/api/admin/retention')).rejects.toMatchObject({
+      statusCode: 404
+    })
     await expect(
-      $fetch('/api/admin/retention', { headers: { authorization: 'Bearer anything' } })
+      $fetch<unknown, string>('/api/admin/retention', {
+        headers: { authorization: 'Bearer anything' }
+      })
     ).rejects.toMatchObject({ statusCode: 404 })
   })
 
   it('rejects an unauthenticated retention run', async () => {
-    await expect($fetch('/api/admin/retention', { method: 'POST' })).rejects.toMatchObject({
+    await expect(
+      $fetch<unknown, string>('/api/admin/retention', { method: 'POST' })
+    ).rejects.toMatchObject({
       statusCode: 401
     })
   })
 
   it('rejects an unauthenticated rollback', async () => {
     await expect(
-      $fetch('/api/admin/rollback', {
+      $fetch<unknown, string>('/api/admin/rollback', {
         method: 'POST',
         body: { projectId: 'whatever', versionId: 'whatever' }
       })
@@ -213,13 +270,16 @@ describe('admin endpoints', () => {
 
   it('runs retention for a signed-in user', async () => {
     expect(
-      await $fetch('/api/admin/retention', { method: 'POST', headers: { cookie: sessionCookie } })
+      await $fetch<unknown, string>('/api/admin/retention', {
+        method: 'POST',
+        headers: { cookie: sessionCookie }
+      })
     ).toMatchObject({ prunedVersions: 0, sweptBlobs: 0 })
   })
 
   it('maps an unknown version to 404', async () => {
     await expect(
-      $fetch('/api/admin/rollback', {
+      $fetch<unknown, string>('/api/admin/rollback', {
         method: 'POST',
         headers: { cookie: sessionCookie },
         body: { projectId, versionId: 'nope' }
@@ -230,7 +290,7 @@ describe('admin endpoints', () => {
   it('maps a held lock to 409', async () => {
     await acquireLock(projectId, { ID: 'held', Who: 'someone' })
     await expect(
-      $fetch('/api/admin/rollback', {
+      $fetch<unknown, string>('/api/admin/rollback', {
         method: 'POST',
         headers: { cookie: sessionCookie },
         body: { projectId, versionId: 'nope' }
@@ -294,9 +354,15 @@ describe('a failing audit write', () => {
   it('does not fail a state write that was already persisted', async () => {
     await withAuditBlocked(async () => {
       expect(
-        await $fetch(url, { method: 'POST', headers: authHeader(), body: state(7) })
+        await $fetch<unknown, string>(url, {
+          method: 'POST',
+          headers: authHeader(),
+          body: state(7)
+        })
       ).toMatchObject({ ok: true })
-      expect(await $fetch(url, { headers: authHeader() })).toMatchObject({ serial: 7 })
+      expect(await $fetch<unknown, string>(url, { headers: authHeader() })).toMatchObject({
+        serial: 7
+      })
     })
     // Proves the injection was real: had the constraint not bitten, the write
     // would have left a state.write audit row and the assertions above would
@@ -311,7 +377,7 @@ describe('a failing audit write', () => {
     // force-unlock to make progress.
     await withAuditBlocked(async () => {
       expect(
-        await $fetch(`${url}/lock`, {
+        await $fetch<unknown, string>(`${url}/lock`, {
           method: 'POST',
           headers: authHeader(),
           body: { ID: 'audit-probe', Who: 'jj@laptop' }
@@ -322,13 +388,17 @@ describe('a failing audit write', () => {
   })
 
   it('does not fail a purge that already happened', async () => {
-    await $fetch(url, { method: 'POST', headers: authHeader(), body: state(1) })
+    await $fetch<unknown, string>(url, { method: 'POST', headers: authHeader(), body: state(1) })
     await withAuditBlocked(async () => {
-      expect(await $fetch(url, { method: 'DELETE', headers: authHeader() })).toMatchObject({
+      expect(
+        await $fetch<unknown, string>(url, { method: 'DELETE', headers: authHeader() })
+      ).toMatchObject({
         ok: true
       })
     })
-    await expect($fetch(url, { headers: authHeader() })).rejects.toMatchObject({ statusCode: 404 })
+    await expect($fetch<unknown, string>(url, { headers: authHeader() })).rejects.toMatchObject({
+      statusCode: 404
+    })
   })
 })
 
@@ -367,7 +437,9 @@ describe('project creation', () => {
     await create({ org: 'acme', project: 'usable' }, { cookie: sessionCookie })
     // A token scoped to acme/prod cannot reach it, and 403 — not 404 — is the
     // proof the project now resolves.
-    await expect($fetch('/api/tf/acme/usable', { headers: authHeader() })).rejects.toMatchObject({
+    await expect(
+      $fetch<unknown, string>('/api/tf/acme/usable', { headers: authHeader() })
+    ).rejects.toMatchObject({
       statusCode: 403
     })
   })
@@ -412,7 +484,11 @@ describe('lock visibility and release', () => {
     // Every LockInfo field but ID is optional, so this is a supported client.
     // The dashboard gated its badge, its banner and its Force Unlock button on
     // `lockedBy`, so a lock like this was held and completely invisible.
-    await $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'quiet' } })
+    await $fetch<unknown, string>(`${url}/lock`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: { ID: 'quiet' }
+    })
 
     const list = await $fetch('/api/ui/projects', { headers: { cookie: sessionCookie } })
     const row = list.find((p) => p.org === 'acme' && p.slug === 'prod')
@@ -422,19 +498,27 @@ describe('lock visibility and release', () => {
 
   it('answers 409 and keeps the lock when the release id does not match', async () => {
     // `terraform force-unlock <wrong-id>` used to print success and do nothing.
-    await $fetch(`${url}/lock`, {
+    await $fetch<unknown, string>(`${url}/lock`, {
       method: 'POST',
       headers: authHeader(),
       body: { ID: 'real', Who: 'jj' }
     })
 
     await expect(
-      $fetch(`${url}/lock`, { method: 'DELETE', headers: authHeader(), body: { ID: 'wrong' } })
+      $fetch<unknown, string>(`${url}/lock`, {
+        method: 'DELETE',
+        headers: authHeader(),
+        body: { ID: 'wrong' }
+      })
     ).rejects.toMatchObject({ statusCode: 409, data: expect.objectContaining({ ID: 'real' }) })
 
     // Still held, so a second acquire still conflicts.
     await expect(
-      $fetch(`${url}/lock`, { method: 'POST', headers: authHeader(), body: { ID: 'other' } })
+      $fetch<unknown, string>(`${url}/lock`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: { ID: 'other' }
+      })
     ).rejects.toMatchObject({ statusCode: 423 })
   })
 
@@ -442,7 +526,11 @@ describe('lock visibility and release', () => {
     // Terraform sends UNLOCK at the end of an apply that worked. If someone
     // force-unlocked in the meantime, failing here would fail a good run.
     expect(
-      await $fetch(`${url}/lock`, { method: 'DELETE', headers: authHeader(), body: { ID: 'gone' } })
+      await $fetch<unknown, string>(`${url}/lock`, {
+        method: 'DELETE',
+        headers: authHeader(),
+        body: { ID: 'gone' }
+      })
     ).toMatchObject({ ok: true })
   })
 })
