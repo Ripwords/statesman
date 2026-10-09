@@ -8,12 +8,15 @@ import {
   projectState,
   stateLock,
   auditLog,
-  user
+  user,
+  projectAccess,
+  projectMember
 } from '../../server/db/schema'
 import { store } from '../../server/storage'
 import { auth } from '../../server/utils/auth'
 import { provisioning, provisioningConfig } from '../../scripts/provision'
 import type { UserRole } from '../../shared/schemas/user'
+import type { ProjectRole } from '../../shared/schemas/project-role'
 
 /**
  * Vitest runs test FILES in parallel against one database and one blob root,
@@ -87,7 +90,23 @@ export async function seedProject(orgSlug: string, projectSlug: string): Promise
     name: projectSlug,
     slug: projectSlug
   })
+  await db().insert(projectAccess).values({ id: projectId, name: projectSlug, slug: projectId })
   return projectId
+}
+
+/** Gives an account a role on one project, the way an owner's Add Member does. */
+export async function grantProjectRole(
+  projectId: string,
+  userId: string,
+  role: ProjectRole
+): Promise<void> {
+  await db()
+    .insert(projectMember)
+    .values({ id: ulid(), organizationId: projectId, userId, role })
+    .onConflictDoUpdate({
+      target: [projectMember.organizationId, projectMember.userId],
+      set: { role }
+    })
 }
 
 /**

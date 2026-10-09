@@ -46,6 +46,10 @@ export const session = pgTable('session', {
   // Same story as the ban columns: impersonation is not offered, but the
   // plugin's session queries select this column.
   impersonatedBy: text('impersonated_by'),
+  // Added by the organization plugin. statesman never reads it: URLs name the
+  // project, and a session-wide "active" project would let one tab change
+  // another tab's authority (project-access spec §6).
+  activeOrganizationId: text('active_organization_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 })
@@ -144,6 +148,57 @@ export const project = pgTable(
   },
   (t) => [uniqueIndex('project_org_slug_uq').on(t.orgId, t.slug)]
 )
+
+// --- Project access (Better Auth organization plugin, renamed) ---------------
+//
+// The plugin calls these "organization", "member" and "invitation". statesman
+// already has an `organization` table (the deployment slug), so the plugin's
+// models are renamed in server/utils/auth.ts and live here. One access row per
+// project, same id, so a project id IS the plugin's organization id.
+
+export const projectAccess = pgTable('project_access', {
+  id: text('id')
+    .primaryKey()
+    .references(() => project.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  logo: text('logo'),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
+
+export const projectMember = pgTable(
+  'project_member',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => projectAccess.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow()
+  },
+  (t) => [uniqueIndex('project_member_org_user_uq').on(t.organizationId, t.userId)]
+)
+
+// Required by the plugin's schema; statesman has no mail transport and never
+// writes to it (spec §1 non-goals).
+export const projectInvitation = pgTable('project_invitation', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id')
+    .notNull()
+    .references(() => projectAccess.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: text('role'),
+  status: text('status').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  inviterId: text('inviter_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+})
 
 // Immutable. `serial` and `lineage` are read from the state file for display
 // only and are tolerated as absent — see spec §12.
@@ -278,6 +333,9 @@ export const schema = {
   apikey,
   organization,
   project,
+  projectAccess,
+  projectMember,
+  projectInvitation,
   stateVersion,
   projectState,
   stateLock,

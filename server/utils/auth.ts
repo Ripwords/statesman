@@ -1,11 +1,12 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { apiKey } from '@better-auth/api-key'
-import { admin } from 'better-auth/plugins'
+import { admin, organization } from 'better-auth/plugins'
 import { createAccessControl } from 'better-auth/plugins/access'
 import { db } from '../db/client'
 import { schema } from '../db/schema'
 import { env } from './env'
+import { projectAc, projectRoles } from './project-access'
 
 /**
  * What the two roles may do, in the admin plugin's own vocabulary.
@@ -37,9 +38,10 @@ export const auth = betterAuth({
   baseURL: env().BETTER_AUTH_URL,
   database: drizzleAdapter(db(), { provider: 'pg', schema }),
   // Sign-in only. Public sign-up on a self-hosted deployment is an open door:
-  // spec §5 gives one organization per deployment and every authenticated user
-  // can read every project's decrypted state, so "anyone can create an account"
-  // and "anyone can read your production secrets" are the same sentence.
+  // spec §5 gives one organization per deployment and an account reads the
+  // decrypted state of every project it holds a role on, so "anyone can create
+  // an account" and "anyone can read your production secrets" are close to the
+  // same sentence.
   // Accounts are created by the operator with `pnpm user:create`, which needs
   // database access and the auth secret.
   emailAndPassword: { enabled: true, disableSignUp: true },
@@ -73,6 +75,21 @@ export const auth = betterAuth({
       // type error and the only ways out are a cast or trusting undocumented
       // runtime behaviour. Neither is a foundation for an authorization check.
       roles: { admin: adminRole, member: memberRole }
+    }),
+    // Per-project roles (project-access spec). A Better Auth "organization" is
+    // a statesman PROJECT here. Nothing in the browser reaches the plugin's own
+    // endpoints — api/auth/[...all].ts answers 404 for them — so these options
+    // describe the data, and server/utils/project-access.ts is the door.
+    organization({
+      ac: projectAc,
+      roles: projectRoles,
+      creatorRole: 'owner',
+      allowUserToCreateOrganization: false,
+      schema: {
+        organization: { modelName: 'projectAccess' },
+        member: { modelName: 'projectMember' },
+        invitation: { modelName: 'projectInvitation' }
+      }
     }),
     apiKey({
       defaultPrefix: 'sm_',
