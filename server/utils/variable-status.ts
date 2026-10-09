@@ -9,7 +9,8 @@ export type StoredVariable = {
   /** Present only for non-sensitive rows; the service never decrypts the rest. */
   value?: JsonValue
   updatedAt: Date
-  updatedBy: string | null
+  /** Who last saved it, by name; null once the account is deleted. */
+  updatedByName: string | null
 }
 
 export type VariableRow = {
@@ -26,7 +27,7 @@ export type VariableRow = {
   /** The stored description only; the panel falls back to `declared.description`. */
   description: string | null
   updatedAt: string | null
-  updatedBy: string | null
+  updatedByName: string | null
   declared: DeclaredVariable | null
 }
 
@@ -68,7 +69,7 @@ export function mergeVariables(
       sensitive: s ? s.sensitive : true,
       description: s?.description || null,
       updatedAt: s ? s.updatedAt.toISOString() : null,
-      updatedBy: s?.updatedBy ?? null,
+      updatedByName: s?.updatedByName ?? null,
       declared: d
     }
     if (s && !s.sensitive && s.value !== undefined) row.value = s.value

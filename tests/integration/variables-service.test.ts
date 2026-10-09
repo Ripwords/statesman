@@ -2,7 +2,7 @@ import { isApiError } from './../ui/nitro-globals'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { environment, variable } from '../../server/db/schema'
+import { environment, user, variable } from '../../server/db/schema'
 import { env } from '../../server/utils/env'
 import { seal } from '../../server/utils/crypto'
 import { variableAad } from '../../shared/schemas/variable'
@@ -103,6 +103,15 @@ describe('setVariable', () => {
 })
 
 describe('listStoredForUi', () => {
+  it('names who last updated a variable, never by id', async () => {
+    await db().update(user).set({ name: 'Ada Lovelace' }).where(eq(user.id, userId))
+    await set('region', { value: 'eu', sensitive: false })
+    const [row] = await listStoredForUi(envId)
+    expect(row?.updatedByName).toBe('Ada Lovelace')
+    expect(JSON.stringify(row)).not.toContain(`"${userId}"`)
+    expect(row).not.toHaveProperty('updatedBy')
+  })
+
   it('omits sensitive values and includes non-sensitive ones', async () => {
     await set('secret', { value: 'hunter2', sensitive: true })
     await set('region', { value: 'eu-west-1', sensitive: false })

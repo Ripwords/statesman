@@ -8,7 +8,7 @@ const stored = (name: string, extra: Partial<StoredVariable> = {}): StoredVariab
   sensitive: true,
   description: null,
   updatedAt: new Date('2026-10-01T00:00:00Z'),
-  updatedBy: null,
+  updatedByName: null,
   ...extra
 })
 const declared = (name: string, extra: Partial<DeclaredVariable> = {}): DeclaredVariable => ({

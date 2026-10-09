@@ -1,7 +1,7 @@
 import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import { db } from '../db/client'
-import { environment, project, variable } from '../db/schema'
+import { environment, project, user, variable } from '../db/schema'
 import { env } from '../utils/env'
 import { open, seal } from '../utils/crypto'
 import {
@@ -224,9 +224,19 @@ export async function readDeliveryValues(
 }
 
 export async function listStoredForUi(environmentId: string): Promise<StoredVariable[]> {
+  // A name, not the user id: the id is machine data the dashboard has no use for.
   const rows = await db()
-    .select()
+    .select({
+      name: variable.name,
+      sensitive: variable.sensitive,
+      description: variable.description,
+      valueSealed: variable.valueSealed,
+      updatedAt: variable.updatedAt,
+      updatedByName: user.name,
+      updatedByEmail: user.email
+    })
     .from(variable)
+    .leftJoin(user, eq(variable.updatedBy, user.id))
     .where(eq(variable.environmentId, environmentId))
     .orderBy(asc(variable.name))
   return rows.map((r) => {
@@ -235,7 +245,7 @@ export async function listStoredForUi(environmentId: string): Promise<StoredVari
       sensitive: r.sensitive,
       description: r.description,
       updatedAt: r.updatedAt,
-      updatedBy: r.updatedBy
+      updatedByName: r.updatedByName || r.updatedByEmail || null
     }
     return r.sensitive ? base : { ...base, value: openValue(environmentId, r.name, r.valueSealed) }
   })

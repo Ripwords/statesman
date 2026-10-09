@@ -250,8 +250,12 @@ const curl = computed(
           <span class="text-sm text-muted">{{ shownDescription(row.original) }}</span>
         </template>
         <template #updatedAt-cell="{ row }">
-          <span v-if="row.original.updatedAt" class="text-sm text-muted tabular">
-            <ClientOnly fallback="—">{{ relativeTime(row.original.updatedAt) }}</ClientOnly>
+          <span v-if="row.original.updatedAt" class="text-sm text-muted">
+            <ClientOnly fallback="—"
+              ><span class="tabular">{{ relativeTime(row.original.updatedAt) }}</span></ClientOnly
+            ><template v-if="row.original.updatedByName">
+              by {{ row.original.updatedByName }}</template
+            >
           </span>
         </template>
         <template #actions-cell="{ row }">

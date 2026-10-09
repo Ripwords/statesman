@@ -108,6 +108,7 @@ with two or more, a switcher appears.
   by default and are sent exactly as typed. Turn on **JSON** to give a number,
   boolean, list or object instead.
 - **Edit** changes a variable. Its name cannot change.
+- **Updated** shows when each variable was last saved and by whom.
 - **Import** takes a JSON object (`{"region": "eu-west-1"}`) or a `.tfvars`
   file. It shows what it will create and overwrite before anything is written.
 

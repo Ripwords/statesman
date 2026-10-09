@@ -18,6 +18,7 @@ const ORG = 'ui-variables'
 const PASSWORD = 'correct horse battery staple'
 const CANARY = `sensitive-canary-${Date.now()}`
 let admin: Record<string, string>
+let adminId: string
 let member: Record<string, string>
 let projectId: string
 let envId: string
@@ -27,6 +28,7 @@ beforeAll(async () => {
   projectId = await seedProject(ORG, 'p')
   const a = await provisionUser(`uv-admin-${Date.now()}@example.com`, PASSWORD)
   const m = await provisionUser(`uv-member-${Date.now()}@example.com`, PASSWORD)
+  adminId = a.id
   await setRole(a.id, 'admin')
   await setRole(m.id, 'member')
   admin = Object.fromEntries((await signInHeaders(a.email, PASSWORD)).entries())
@@ -76,6 +78,12 @@ describe('variables', () => {
       ['region', null]
     ])
     expect(body.rows.find((r) => r.name === 'region')?.value).toBe('eu')
+  })
+
+  it('names who last updated each row, and never ships the user id', async () => {
+    const body = await listVariables(testEvent({ headers: member, params: { id: envId } }))
+    expect(body.rows.find((r) => r.name === 'region')?.updatedByName).toBe('Test')
+    expect(JSON.stringify(body)).not.toContain(adminId)
   })
 
   it('refuses a malformed name with 400', async () => {

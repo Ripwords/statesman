@@ -7,7 +7,7 @@ const stored = (name: string, extra: Partial<StoredVariable> = {}): StoredVariab
   sensitive: true,
   description: null,
   updatedAt: new Date('2026-10-01T00:00:00Z'),
-  updatedBy: 'u1',
+  updatedByName: 'Ada',
   ...extra
 })
 const declared = (name: string, extra: Partial<DeclaredVariable> = {}): DeclaredVariable => ({
@@ -111,7 +111,7 @@ describe('mergeVariables', () => {
       status: 'missing',
       stored: false,
       updatedAt: null,
-      updatedBy: null
+      updatedByName: null
     })
   })
 
