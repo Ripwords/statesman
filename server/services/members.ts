@@ -14,14 +14,18 @@ export type MemberRow = {
   addedAt: Date
 }
 
-async function orgIdOf(projectId: string): Promise<string> {
+async function projectOf(projectId: string): Promise<{ orgId: string; name: string }> {
   const rows = await db()
-    .select({ orgId: project.orgId })
+    .select({ orgId: project.orgId, name: project.name })
     .from(project)
     .where(eq(project.id, projectId))
   const row = rows[0]
   if (!row) throw createError({ statusCode: 404, statusMessage: NOT_FOUND })
-  return row.orgId
+  return row
+}
+
+async function orgIdOf(projectId: string): Promise<string> {
+  return (await projectOf(projectId)).orgId
 }
 
 export async function listMembers(projectId: string): Promise<MemberRow[]> {
@@ -50,7 +54,7 @@ export async function addMember(input: {
   role: ProjectRole
   actorId: string
 }): Promise<{ userId: string }> {
-  const orgId = await orgIdOf(input.projectId)
+  const { orgId, name: projectName } = await projectOf(input.projectId)
   const rows = await db()
     .select({ id: user.id, name: user.name })
     .from(user)
@@ -62,11 +66,7 @@ export async function addMember(input: {
       statusMessage: 'No account with that email. An admin creates accounts.'
     })
 
-  const [projectRow] = await db()
-    .select({ name: project.name })
-    .from(project)
-    .where(eq(project.id, input.projectId))
-  await ensureAccessRecord(input.projectId, projectRow?.name ?? input.projectId)
+  await ensureAccessRecord(input.projectId, projectName)
 
   const inserted = await db()
     .insert(projectMember)
@@ -114,12 +114,18 @@ export async function changeMemberRole(input: {
       statusCode: 404,
       statusMessage: 'That account is not a member of this project.'
     })
-  await db()
+  const updated = await db()
     .update(projectMember)
     .set({ role: input.role })
     .where(
       and(eq(projectMember.organizationId, input.projectId), eq(projectMember.userId, input.userId))
     )
+    .returning()
+  if (updated.length === 0)
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'That account is not a member of this project.'
+    })
   await recordAuditBestEffort({
     orgId,
     projectId: input.projectId,

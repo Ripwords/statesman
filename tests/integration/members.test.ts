@@ -18,22 +18,28 @@ import removeMember from '../../server/api/ui/projects/[id]/members/[userId].del
 
 const ORG = 'members'
 const PASSWORD = 'correct horse battery staple'
-let projectId: string
 type Actor = { id: string; email: string; h: Record<string, string> }
 const ACTORS = ['admin', 'owner', 'viewer', 'outsider'] as const
 const u = {} as Record<(typeof ACTORS)[number], Actor>
 
 beforeAll(async () => {
   await resetDb(ORG)
-  projectId = await seedProject(ORG, 'p')
   const stamp = Date.now()
   for (const name of ACTORS) {
     const p = await provisionUser(`mb-${name}-${stamp}@example.com`, PASSWORD)
     await setRole(p.id, name === 'admin' ? 'admin' : 'member')
-    if (name === 'owner' || name === 'viewer') await grantProjectRole(projectId, p.id, name)
     u[name] = { ...p, h: Object.fromEntries((await signInHeaders(p.email, PASSWORD)).entries()) }
   }
 })
+
+let seq = 0
+/** A project of its own with the owner and viewer granted, so no test leans on another's rows. */
+async function fresh(): Promise<string> {
+  const id = await seedProject(ORG, `t${++seq}`)
+  await grantProjectRole(id, u.owner.id, 'owner')
+  await grantProjectRole(id, u.viewer.id, 'viewer')
+  return id
+}
 
 async function status(call: Promise<unknown>): Promise<number | undefined> {
   try {
@@ -46,7 +52,8 @@ async function status(call: Promise<unknown>): Promise<number | undefined> {
 
 describe('members', () => {
   it('lists members with name, email, role for any member', async () => {
-    const res = await listMembers(testEvent({ headers: u.viewer.h, params: { id: projectId } }))
+    const pid = await fresh()
+    const res = await listMembers(testEvent({ headers: u.viewer.h, params: { id: pid } }))
     expect(res.members.map((m) => m.email).toSorted()).toEqual(
       [u.owner.email, u.viewer.email].toSorted()
     )
@@ -54,24 +61,26 @@ describe('members', () => {
   })
 
   it('matches email case-insensitively and trims', async () => {
+    const pid = await fresh()
     await addMember(
       testEvent({
         headers: u.owner.h,
-        params: { id: projectId },
+        params: { id: pid },
         body: { email: `  ${u.outsider.email.toUpperCase()} `, role: 'editor' }
       })
     )
-    const res = await listMembers(testEvent({ headers: u.owner.h, params: { id: projectId } }))
+    const res = await listMembers(testEvent({ headers: u.owner.h, params: { id: pid } }))
     expect(res.members.find((m) => m.userId === u.outsider.id)?.role).toBe('editor')
   })
 
   it('answers 409 for an existing member', async () => {
+    const pid = await fresh()
     expect(
       await status(
         addMember(
           testEvent({
             headers: u.owner.h,
-            params: { id: projectId },
+            params: { id: pid },
             body: { email: u.viewer.email, role: 'owner' }
           })
         )
@@ -80,12 +89,13 @@ describe('members', () => {
   })
 
   it('answers 404 for an unknown email', async () => {
+    const pid = await fresh()
     expect(
       await status(
         addMember(
           testEvent({
             headers: u.owner.h,
-            params: { id: projectId },
+            params: { id: pid },
             body: { email: 'nobody@example.com', role: 'viewer' }
           })
         )
@@ -94,12 +104,13 @@ describe('members', () => {
   })
 
   it('refuses a viewer with 403', async () => {
+    const pid = await fresh()
     expect(
       await status(
         addMember(
           testEvent({
             headers: u.viewer.h,
-            params: { id: projectId },
+            params: { id: pid },
             body: { email: u.admin.email, role: 'viewer' }
           })
         )
@@ -108,28 +119,45 @@ describe('members', () => {
   })
 
   it('lets an admin with no membership row manage members', async () => {
+    const pid = await fresh()
+    await grantProjectRole(pid, u.outsider.id, 'editor')
     await changeRole(
       testEvent({
         headers: u.admin.h,
-        params: { id: projectId, userId: u.outsider.id },
+        params: { id: pid, userId: u.outsider.id },
         body: { role: 'viewer' }
       })
     )
-    const res = await listMembers(testEvent({ headers: u.admin.h, params: { id: projectId } }))
+    const res = await listMembers(testEvent({ headers: u.admin.h, params: { id: pid } }))
     expect(res.members.find((m) => m.userId === u.outsider.id)?.role).toBe('viewer')
   })
 
-  it('audits add, role change and removal', async () => {
-    await removeMember(
-      testEvent({ headers: u.owner.h, params: { id: projectId, userId: u.outsider.id } })
+  it('audits add, role change and removal once each, with actor and meta', async () => {
+    const pid = await fresh()
+    const params = { id: pid, userId: u.outsider.id }
+    await addMember(
+      testEvent({
+        headers: u.owner.h,
+        params: { id: pid },
+        body: { email: u.outsider.email, role: 'viewer' }
+      })
     )
+    await changeRole(testEvent({ headers: u.owner.h, params, body: { role: 'editor' } }))
+    await removeMember(testEvent({ headers: u.owner.h, params }))
     const rows = await db()
-      .select({ action: auditLog.action })
+      .select({ action: auditLog.action, actorId: auditLog.actorId, meta: auditLog.metaJson })
       .from(auditLog)
-      .where(eq(auditLog.projectId, projectId))
-    expect(new Set(rows.map((r) => r.action))).toEqual(
-      new Set(['member.add', 'member.role', 'member.remove'])
-    )
+      .where(eq(auditLog.projectId, pid))
+    const byAction = Object.fromEntries(rows.map((r) => [r.action, r]))
+    expect(rows).toHaveLength(3)
+    expect(byAction['member.add']?.meta).toEqual({ userId: u.outsider.id, role: 'viewer' })
+    expect(byAction['member.role']?.meta).toEqual({
+      userId: u.outsider.id,
+      from: 'viewer',
+      to: 'editor'
+    })
+    expect(byAction['member.remove']?.meta).toEqual({ userId: u.outsider.id, role: 'editor' })
+    for (const r of rows) expect(r.actorId).toBe(u.owner.id)
   })
 
   it('answers 404 with the member message for an unknown userId', async () => {
@@ -140,7 +168,8 @@ describe('members', () => {
         return isApiError(e) ? e.statusMessage : undefined
       }
     }
-    const params = { id: projectId, userId: 'nobody' }
+    const pid = await fresh()
+    const params = { id: pid, userId: 'nobody' }
     expect(await status(removeMember(testEvent({ headers: u.owner.h, params })))).toBe(404)
     expect(await message(removeMember(testEvent({ headers: u.owner.h, params })))).toBe(
       'That account is not a member of this project.'
@@ -148,12 +177,13 @@ describe('members', () => {
   })
 
   it('answers 404 when changing or removing a non-member', async () => {
+    const pid = await fresh()
     expect(
       await status(
         changeRole(
           testEvent({
             headers: u.owner.h,
-            params: { id: projectId, userId: u.outsider.id },
+            params: { id: pid, userId: u.outsider.id },
             body: { role: 'owner' }
           })
         )
@@ -161,9 +191,7 @@ describe('members', () => {
     ).toBe(404)
     expect(
       await status(
-        removeMember(
-          testEvent({ headers: u.owner.h, params: { id: projectId, userId: u.outsider.id } })
-        )
+        removeMember(testEvent({ headers: u.owner.h, params: { id: pid, userId: u.outsider.id } }))
       )
     ).toBe(404)
   })
