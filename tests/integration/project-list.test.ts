@@ -14,6 +14,7 @@ import { db } from '../../server/db/client'
 import { projectAccess, project } from '../../server/db/schema'
 import listProjects from '../../server/api/ui/projects.get'
 import createProject from '../../server/api/ui/projects.post'
+import { env } from '../../server/utils/env'
 
 const ORG = 'project-list'
 const PASSWORD = 'correct horse battery staple'
@@ -47,6 +48,35 @@ describe('GET /api/ui/projects', () => {
     const rows = (await listProjects(testEvent({ headers: admin }))).filter((r) => r.org === ORG)
     expect(rows.map((r) => r.id).toSorted()).toEqual([mine, theirs].toSorted())
     expect(new Set(rows.map((r) => r.myRole))).toEqual(new Set(['admin']))
+  })
+})
+
+describe('project settings in the list', () => {
+  it('carries name, description, archive and effective retention', async () => {
+    const id = await seedProject(ORG, 'retired')
+    await db()
+      .update(project)
+      .set({
+        name: 'Retired',
+        description: 'Old account',
+        archivedAt: new Date(),
+        retentionKeepDays: 3
+      })
+      .where(eq(project.id, id))
+    const rows = await listProjects(testEvent({ headers: admin }))
+    const row = rows.find((r) => r.id === id)
+    expect(row).toMatchObject({
+      name: 'Retired',
+      description: 'Old account',
+      archived: true,
+      retention: {
+        keepVersions: env().RETENTION_KEEP_VERSIONS,
+        keepDays: 3,
+        source: { versions: 'default', days: 'project' }
+      }
+    })
+    expect(row).not.toHaveProperty('archivedAt')
+    expect(row).not.toHaveProperty('retentionKeepDays')
   })
 })
 

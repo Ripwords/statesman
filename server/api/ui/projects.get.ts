@@ -12,6 +12,8 @@ import { projectRoleSchema } from '../../../shared/schemas/project-role'
 import { isAdmin } from '../../../shared/schemas/user'
 import type { EffectiveRole } from '../../utils/project-access'
 import { requireSession } from '../../utils/ui-auth'
+import { env } from '../../utils/env'
+import { effectiveRetention } from '../../../shared/retention'
 
 /**
  * One row per project with everything the list and the project page need.
@@ -29,6 +31,10 @@ export default defineEventHandler(async (event) => {
       id: project.id,
       slug: project.slug,
       name: project.name,
+      description: project.description,
+      archivedAt: project.archivedAt,
+      retentionKeepVersions: project.retentionKeepVersions,
+      retentionKeepDays: project.retentionKeepDays,
       memberRole: projectMember.role,
       org: organization.slug,
       updatedAt: projectState.updatedAt,
@@ -54,12 +60,24 @@ export default defineEventHandler(async (event) => {
     // at the bottom rather than the top of the list.
     .orderBy(sql`${projectState.updatedAt} desc nulls last`)
 
-  return rows.flatMap(({ memberRole, ...row }) => {
-    // Admins are `admin` everywhere (spec §3). A member row with an
-    // unrecognised role string resolves to no access, as effectiveRole does.
-    const myRole: EffectiveRole | null = admin
-      ? 'admin'
-      : (projectRoleSchema.safeParse(memberRole).data ?? null)
-    return myRole === null ? [] : [{ ...row, myRole }]
-  })
+  const config = env()
+  const defaults = {
+    keepVersions: config.RETENTION_KEEP_VERSIONS,
+    keepDays: config.RETENTION_KEEP_DAYS
+  }
+  return rows.flatMap(
+    ({ memberRole, archivedAt, retentionKeepVersions, retentionKeepDays, ...row }) => {
+      // Admins are `admin` everywhere (spec §3). A member row with an
+      // unrecognised role string resolves to no access, as effectiveRole does.
+      const myRole: EffectiveRole | null = admin
+        ? 'admin'
+        : (projectRoleSchema.safeParse(memberRole).data ?? null)
+      if (myRole === null) return []
+      const retention = effectiveRetention(
+        { keepVersions: retentionKeepVersions, keepDays: retentionKeepDays },
+        defaults
+      )
+      return [{ ...row, archived: archivedAt !== null, retention, myRole }]
+    }
+  )
 })
