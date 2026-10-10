@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PasswordReveal } from '~/utils/password-reveal'
 import { roleOf, type UserRole } from '~~/shared/schemas/user'
 
 definePageMeta({ layout: 'dashboard' })
@@ -15,11 +16,11 @@ const {
 } = await useFetch('/api/ui/users', { immediate: isAdmin.value })
 type UserRow = NonNullable<typeof users.value>[number]
 
-const revealed = ref<{ email: string; password: string } | null>(null)
+const revealed = ref<PasswordReveal | null>(null)
 const creating = ref(false)
 
 async function onCreated(account: { email: string; password: string }) {
-  revealed.value = account
+  revealed.value = { ...account, kind: 'created' }
   notice.value = `${account.email} can sign in now. Add them to projects from each project’s Members tab.`
   await refresh()
 }
@@ -81,7 +82,7 @@ async function resetPassword() {
   try {
     const result = await $fetch(`/api/ui/users/${row.id}/password`, { method: 'POST' })
     pendingReset.value = null
-    revealed.value = { email: row.email, password: result.password }
+    revealed.value = { email: row.email, password: result.password, kind: 'reset' }
   } catch (caught: unknown) {
     actionError.value = messageOf(
       caught,

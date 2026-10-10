@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const props = defineProps<{ reveal: { email: string; password: string } | null }>()
+import type { PasswordReveal } from '~/utils/password-reveal'
+
+const props = defineProps<{ reveal: PasswordReveal | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const open = computed({
@@ -66,7 +68,7 @@ onBeforeUnmount(() => {
     v-model:open="open"
     :dismissible="false"
     :close="false"
-    title="New Password"
+    :title="reveal?.kind === 'created' ? 'Account Created' : 'New Password'"
     :ui="{ content: 'overscroll-contain', body: 'overscroll-contain' }"
   >
     <template #body>
@@ -75,7 +77,7 @@ onBeforeUnmount(() => {
           Give this to
           <span class="font-medium text-default">{{ reveal?.email }}</span>
           over something you trust. It is stored hashed, so this dialog is the only place it is ever
-          readable — closing it without copying means running another reset.
+          readable — closing it without copying means resetting the password.
         </p>
 
         <UFormField label="Password">
@@ -112,6 +114,7 @@ onBeforeUnmount(() => {
         </div>
 
         <UAlert
+          v-if="reveal?.kind === 'reset'"
           color="warning"
           variant="subtle"
           icon="i-lucide-info"
