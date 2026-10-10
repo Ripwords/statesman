@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
+import { FetchError } from 'ofetch'
 import { statusMessageOf } from '~/utils/status-message'
 import { addMemberSchema, type ProjectRole } from '~~/shared/schemas/project-role'
 
@@ -18,10 +19,15 @@ const roleOptions: Array<{ label: string; value: ProjectRole; description: strin
 const state = reactive<Partial<AddMemberInput>>({ email: undefined, role: 'viewer' })
 const pending = ref(false)
 const formError = ref<string | null>(null)
+// The 404 for an unknown email. An admin can fix it on the spot, so they get
+// the way there; anyone else is told who can.
+const noAccount = ref(false)
+const { isAdmin } = useAuth()
 
 async function onSubmit(event: FormSubmitEvent<AddMemberInput>) {
   pending.value = true
   formError.value = null
+  noAccount.value = false
   try {
     await $fetch(`/api/ui/projects/${props.projectId}/members`, {
       method: 'POST',
@@ -30,6 +36,7 @@ async function onSubmit(event: FormSubmitEvent<AddMemberInput>) {
     emit('added')
     open.value = false
   } catch (error) {
+    noAccount.value = error instanceof FetchError && error.statusCode === 404
     formError.value = statusMessageOf(
       error,
       'Could not add the member. Check that you are still signed in, then try again.'
@@ -47,6 +54,7 @@ function onError(event: FormErrorEvent) {
 watch(open, (isOpen) => {
   if (isOpen) return
   formError.value = null
+  noAccount.value = false
   state.email = undefined
   state.role = 'viewer'
 })
@@ -69,7 +77,7 @@ watch(open, (isOpen) => {
         <UFormField
           label="Email"
           name="email"
-          description="The account must already exist. An admin creates accounts."
+          description="The account must already exist. An admin creates accounts on the Users page."
           required
         >
           <UInput
@@ -94,7 +102,18 @@ watch(open, (isOpen) => {
             variant="subtle"
             icon="i-lucide-triangle-alert"
             :description="formError"
-          />
+          >
+            <template v-if="noAccount && isAdmin" #actions>
+              <UButton
+                to="/users"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-user-plus"
+                label="Create the account on the Users page"
+              />
+            </template>
+          </UAlert>
         </div>
 
         <UButton

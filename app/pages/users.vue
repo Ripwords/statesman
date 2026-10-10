@@ -16,6 +16,13 @@ const {
 type UserRow = NonNullable<typeof users.value>[number]
 
 const revealed = ref<{ email: string; password: string } | null>(null)
+const creating = ref(false)
+
+async function onCreated(account: { email: string; password: string }) {
+  revealed.value = account
+  notice.value = `${account.email} can sign in now. Add them to projects from each project’s Members tab.`
+  await refresh()
+}
 const notice = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
@@ -100,17 +107,20 @@ function messageOf(caught: unknown, fallback: string): string {
 
 <template>
   <div class="space-y-6">
-    <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Users</h1>
+    <div class="flex items-center justify-between gap-4">
+      <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Users</h1>
+      <UButton v-if="isAdmin" icon="i-lucide-user-plus" label="New User" @click="creating = true" />
+    </div>
 
     <AdminOnly what="Managing accounts">
       <div class="space-y-6">
         <p class="max-w-prose text-sm text-muted text-pretty">
           Admins manage accounts and reach every project. Members reach only the projects they hold
           a role on — viewer, editor or owner — and every role reads that project’s decrypted state,
-          so give someone a role only if they may see every secret in its state files. New accounts
-          are made from the command line with
-          <code class="text-xs" translate="no">pnpm user:create</code>, then added from each
-          project’s Members tab.
+          so give someone a role only if they may see every secret in its state files. Create
+          accounts with <strong>New User</strong>, or
+          <code class="text-xs" translate="no">pnpm user:create</code> from a shell, then add them
+          from each project’s Members tab.
         </p>
 
         <div aria-live="polite" class="space-y-3">
@@ -248,6 +258,7 @@ function messageOf(caught: unknown, fallback: string): string {
       </template>
     </UModal>
 
+    <UserCreateModal v-model:open="creating" @created="onCreated" />
     <PasswordRevealModal :reveal="revealed" @close="revealed = null" />
   </div>
 </template>
