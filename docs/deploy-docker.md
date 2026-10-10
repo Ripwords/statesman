@@ -10,13 +10,15 @@ against this file; the output quoted is real.
 
 ```bash
 cp .env.prod.example .env.prod
-pnpm gen:key                  # → STATESMAN_ENCRYPTION_KEY
+openssl rand -base64 32       # → STATESMAN_ENCRYPTION_KEY
 openssl rand -base64 32       # → BETTER_AUTH_SECRET
-openssl rand -base64 24       # → POSTGRES_PASSWORD
+openssl rand -hex 24          # → POSTGRES_PASSWORD
 ```
 
-Fill in `.env.prod`. Compose reads it for interpolation only; the app's own
-environment is assembled inside the compose file.
+Fill in `.env.prod`: the three values above and `BETTER_AUTH_URL`. Compose
+reads it for interpolation only; the app's own environment is assembled inside
+the compose file. The Postgres password is hex because it is also written into
+the derived `DATABASE_URL`, where a `/` or `+` from base64 would break the URL.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
@@ -28,6 +30,8 @@ environment is assembled inside the compose file.
 | `POSTGRES_DB` | no | `statesman` | |
 | `DATABASE_URL` | no | derived from the three above, pointing at the `postgres` service | set it to use a managed database, and delete the `postgres` service |
 | `PORT` | no | `3000` | host port |
+| `STATESMAN_ORG_SLUG` | no | `acme` | the `:org` segment of every backend address; read by `db:seed` |
+| `STATESMAN_SEED_PROJECTS` | no | `prod` | comma-separated projects `db:seed` creates |
 | `STORAGE_DRIVER` | no | `local` | `local` uses the `statedata` volume |
 | `S3_BUCKET` | when `s3` | — | |
 | `S3_ENDPOINT` | no | AWS | set for MinIO, R2, B2 |
@@ -90,7 +94,8 @@ does not recognise is a 404, so a typo in `address` fails loudly rather than
 silently splitting a team's state across two projects.
 
 Seeding remains the non-interactive route, for provisioning from a script:
-add `-e STATESMAN_SEED_PROJECTS=prod,staging,sandbox` to the command above. It
+set `STATESMAN_SEED_PROJECTS=prod,staging,sandbox` in `.env.prod` and re-run the
+command above. It
 is a no-op per row, so it is safe to re-run.
 
 ## 4. Verify

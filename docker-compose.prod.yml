@@ -40,6 +40,8 @@ services:
       # password Better Auth will accept; it deliberately never needs
       # STATESMAN_ENCRYPTION_KEY.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      STATESMAN_ORG_SLUG: ${STATESMAN_ORG_SLUG:-acme}
+      STATESMAN_SEED_PROJECTS: ${STATESMAN_SEED_PROJECTS:-prod}
     depends_on:
       postgres: { condition: service_healthy }
     restart: 'no'
