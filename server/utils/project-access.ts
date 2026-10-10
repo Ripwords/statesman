@@ -16,7 +16,7 @@ import type { TokenScope } from '../../shared/schemas/token'
  * strings — they ask `projectCan`, which asks these objects.
  */
 export const projectStatements = {
-  project: ['read', 'rollback', 'unlock'],
+  project: ['read', 'update', 'rollback', 'unlock'],
   environment: ['create', 'delete', 'link', 'sync'],
   variable: ['write', 'download'],
   member: ['manage'],
@@ -33,7 +33,7 @@ export const projectRoles = {
     variable: ['write']
   }),
   owner: projectAc.newRole({
-    project: ['read', 'rollback', 'unlock'],
+    project: ['read', 'update', 'rollback', 'unlock'],
     environment: ['create', 'delete', 'link', 'sync'],
     variable: ['write', 'download'],
     member: ['manage'],
@@ -46,6 +46,7 @@ export type { ProjectPermission, EffectiveRole }
 /** Each permission as the request the plugin's role objects understand. */
 const REQUESTS = {
   'project:read': { project: ['read'] },
+  'project:update': { project: ['update'] },
   'project:rollback': { project: ['rollback'] },
   'project:unlock': { project: ['unlock'] },
   'environment:create': { environment: ['create'] },
@@ -68,6 +69,25 @@ const ASCENDING: ProjectRole[] = ['viewer', 'editor', 'owner']
 /** The lowest project role that may do this. Used for the 403 message only. */
 export function minimumRoleFor(permission: ProjectPermission): ProjectRole {
   return ASCENDING.find((role) => projectCan(role, permission)) ?? 'owner'
+}
+
+/**
+ * What still works on an archived project (project-settings spec §5): reading,
+ * clearing a stuck lock, renaming, downloading variables and managing members.
+ * Everything else is refused with ARCHIVED.
+ */
+export const ARCHIVED_ALLOWED: ReadonlySet<ProjectPermission> = new Set<ProjectPermission>([
+  'project:read',
+  'project:unlock',
+  'project:update',
+  'variable:download',
+  'member:manage'
+])
+
+export const ARCHIVED = 'This project is archived. An admin can unarchive it.'
+
+function archived(): never {
+  throw createError({ statusCode: 409, statusMessage: ARCHIVED })
 }
 
 /** The 404 a non-member and an unknown id share, byte for byte (spec §6, D2). */
@@ -134,19 +154,21 @@ export async function requireProjectPermission(
   const principal = await requireSession(event)
   const role = await effectiveRole(principal, projectId)
   if (role === null) notFound()
-  if (role === 'admin') {
-    const real = await db()
-      .select({ id: project.id })
-      .from(project)
-      .where(eq(project.id, projectId))
-    if (real.length === 0) notFound()
-  }
+  const rows = await db()
+    .select({ archivedAt: project.archivedAt })
+    .from(project)
+    .where(eq(project.id, projectId))
+  const found = rows[0]
+  if (!found) notFound()
   if (!projectCan(role, permission)) {
     throw createError({
       statusCode: 403,
       statusMessage: `Needs ${minimumRoleFor(permission)} access to this project. Ask a project owner.`
     })
   }
+  // After the role check, so a viewer is told about the role it lacks rather
+  // than about a state an admin would have to change anyway.
+  if (found.archivedAt !== null && !ARCHIVED_ALLOWED.has(permission)) archived()
   return { ...principal, projectRole: role }
 }
 
@@ -199,22 +221,30 @@ export async function requireTokenAuthority(
   principal: Principal,
   scope: TokenScope
 ): Promise<void> {
-  if (isAdmin(principal.role)) return
+  const admin = isAdmin(principal.role)
   const refuse = (): never => {
     throw createError({
       statusCode: 403,
       statusMessage: 'You can only create tokens for projects you own.'
     })
   }
-  if (scope.kind !== 'projects') return refuse()
+  if (scope.kind !== 'projects') return admin ? undefined : refuse()
   for (const ref of scope.projects) {
     const [org, slug] = ref.split('/')
     const rows = await db()
-      .select({ id: project.id })
+      .select({ id: project.id, archivedAt: project.archivedAt })
       .from(project)
       .innerJoin(organization, eq(project.orgId, organization.id))
       .where(and(eq(organization.slug, org ?? ''), eq(project.slug, slug ?? '')))
-    const id = rows[0]?.id
-    if (!id || (await effectiveRole(principal, id)) !== 'owner') refuse()
+    const found = rows[0]
+    if (admin) {
+      // An admin may name a project that does not exist yet; refusing that is
+      // not this change's business. An archived one cannot be written, so a
+      // token for it would only ever fail.
+      if (found?.archivedAt) archived()
+      continue
+    }
+    if (!found || (await effectiveRole(principal, found.id)) !== 'owner') refuse()
+    if (found.archivedAt !== null) archived()
   }
 }

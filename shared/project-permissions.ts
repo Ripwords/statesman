@@ -2,6 +2,7 @@ import type { ProjectRole } from './schemas/project-role'
 
 export type ProjectPermission =
   | 'project:read'
+  | 'project:update'
   | 'project:rollback'
   | 'project:unlock'
   | 'environment:create'
@@ -21,6 +22,7 @@ export const MIN_ROLE: Record<ProjectPermission, ProjectRole> = {
   'project:unlock': 'editor',
   'environment:sync': 'editor',
   'variable:write': 'editor',
+  'project:update': 'owner',
   'project:rollback': 'owner',
   'environment:create': 'owner',
   'environment:delete': 'owner',
