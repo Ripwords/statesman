@@ -9,7 +9,8 @@ import {
   resolveProject,
   handleLockAcquire,
   handleLockRelease,
-  lockIdQuerySchema
+  lockIdQuerySchema,
+  assertWritable
 } from '../../../../utils/tf-handler'
 import { readCurrentState, writeState, purgeState } from '../../../../services/state'
 import { recordAuditBestEffort } from '../../../../services/audit'
@@ -50,6 +51,8 @@ export default defineEventHandler(async (event) => {
   // Terraform can be configured to send LOCK/UNLOCK to the base address.
   if (method === 'LOCK') return handleLockAcquire(event, resolved, principal)
   if (method === 'UNLOCK') return handleLockRelease(event, resolved, principal)
+
+  assertWritable(resolved)
 
   if (method === 'POST') {
     const held = await currentLock(resolved.id)

@@ -9,7 +9,7 @@ import { lockInfoSchema, type LockInfo } from '../../shared/schemas/lock'
 import { projectRefSchema, type ProjectRef } from '../../shared/schemas/project'
 import type { TfPrincipal } from './tf-auth'
 
-export type ResolvedProject = { id: string; orgId: string; ref: ProjectRef }
+export type ResolvedProject = { id: string; orgId: string; ref: ProjectRef; archived: boolean }
 
 // Terraform appends the held lock id to the write address as ?ID=<lock-id>.
 // Anything else on the query string is Terraform's business, not ours.
@@ -32,13 +32,26 @@ export async function refFromEvent(event: H3Event): Promise<ProjectRef> {
 
 export async function resolveProject(ref: ProjectRef): Promise<ResolvedProject> {
   const rows = await db()
-    .select({ id: project.id, orgId: project.orgId })
+    .select({ id: project.id, orgId: project.orgId, archivedAt: project.archivedAt })
     .from(project)
     .innerJoin(organization, eq(project.orgId, organization.id))
     .where(and(eq(organization.slug, ref.org), eq(project.slug, ref.project)))
   const row = rows[0]
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Unknown project' })
-  return { id: row.id, orgId: row.orgId, ref }
+  return { id: row.id, orgId: row.orgId, ref, archived: row.archivedAt !== null }
+}
+
+/**
+ * An archived project is read-only (project-settings spec §5). 409, not 423:
+ * Terraform reads 423 as "lock held" and would print a holder that does not
+ * exist. Reads and unlock stay open so a stuck lock can still be cleared.
+ */
+export function assertWritable(resolved: ResolvedProject): void {
+  if (!resolved.archived) return
+  throw createError({
+    statusCode: 409,
+    statusMessage: `Project ${resolved.ref.org}/${resolved.ref.project} is archived. An admin can unarchive it.`
+  })
 }
 
 /**
@@ -86,6 +99,7 @@ export async function handleLockAcquire(
   resolved: ResolvedProject,
   principal: TfPrincipal
 ): Promise<{ ok: true } | LockInfo> {
+  assertWritable(resolved)
   const info = await readLockInfo(event)
   const result = await acquireLock(resolved.id, info)
   if (!result.ok) {
