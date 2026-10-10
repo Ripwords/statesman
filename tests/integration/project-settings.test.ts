@@ -14,7 +14,8 @@ import { auditLog, project, projectAccess } from '../../server/db/schema'
 import patchProject from '../../server/api/ui/projects/[id].patch'
 import archiveRoute from '../../server/api/ui/projects/[id]/archive.post'
 import unarchiveRoute from '../../server/api/ui/projects/[id]/unarchive.post'
-import { acquireLock } from '../../server/services/lock'
+import { acquireLock, currentLock } from '../../server/services/lock'
+import { acquireWritableLock } from '../../server/utils/tf-handler'
 import deleteRoute from '../../server/api/ui/projects/[id].delete'
 import { writeState } from '../../server/services/state'
 import { store } from '../../server/storage'
@@ -244,6 +245,28 @@ describe('archive and unarchive', () => {
     await hit(unarchiveRoute, u.admin, pid)
     expect((await row(pid))?.archivedAt).toBeNull()
     expect(await audits(pid, 'project.unarchive')).toBe(1)
+  })
+})
+
+describe('archive racing a lock acquire', () => {
+  // The handler resolved the project as active, then an admin archived it
+  // before the lock row went in. The run must not end up holding a lock it
+  // can never write under.
+  it('refuses a lock taken after an archive the handler did not see, and leaves none', async () => {
+    const pid = await fresh()
+    const slug = slugs.get(pid) ?? ''
+    const resolved = { id: pid, orgId: '', ref: { org: ORG, project: slug }, archived: false }
+    await archive(pid)
+    expect(await status(acquireWritableLock(resolved, { ID: 'run-race' }))).toBe(409)
+    expect(await currentLock(pid)).toBeNull()
+  })
+
+  it('takes the lock on an active project', async () => {
+    const pid = await fresh()
+    const slug = slugs.get(pid) ?? ''
+    const resolved = { id: pid, orgId: '', ref: { org: ORG, project: slug }, archived: false }
+    expect(await acquireWritableLock(resolved, { ID: 'run-ok' })).toEqual({ ok: true })
+    expect((await currentLock(pid))?.ID).toBe('run-ok')
   })
 })
 

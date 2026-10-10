@@ -63,13 +63,16 @@ export async function setArchived(input: {
     .where(eq(project.id, input.projectId))
   if (!found) throw createError({ statusCode: 404, statusMessage: NOT_FOUND })
   if ((found.archivedAt !== null) === input.archived) return
-  if (input.archived && (await currentLock(input.projectId))) {
-    throw createError({ statusCode: 409, statusMessage: LOCKED_ARCHIVE })
-  }
   await db()
     .update(project)
     .set({ archivedAt: input.archived ? new Date() : null })
     .where(eq(project.id, input.projectId))
+  // Write, then look for a lock: acquireWritableLock does the mirror image, so
+  // a lock taken while this runs is seen by one side or the other.
+  if (input.archived && (await currentLock(input.projectId))) {
+    await db().update(project).set({ archivedAt: null }).where(eq(project.id, input.projectId))
+    throw createError({ statusCode: 409, statusMessage: LOCKED_ARCHIVE })
+  }
   await recordAuditBestEffort({
     orgId: found.orgId,
     projectId: input.projectId,

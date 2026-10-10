@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/client'
 import { organization, project } from '../db/schema'
-import { acquireLock, releaseLock, currentLock } from '../services/lock'
+import { acquireLock, releaseLock, currentLock, type AcquireResult } from '../services/lock'
 import { recordAuditBestEffort } from '../services/audit'
 import { lockInfoSchema, type LockInfo } from '../../shared/schemas/lock'
 import { projectRefSchema, type ProjectRef } from '../../shared/schemas/project'
@@ -47,11 +47,36 @@ export async function resolveProject(ref: ProjectRef): Promise<ResolvedProject> 
  * exist. Reads and unlock stay open so a stuck lock can still be cleared.
  */
 export function assertWritable(resolved: ResolvedProject): void {
-  if (!resolved.archived) return
+  if (resolved.archived) archivedConflict(resolved)
+}
+
+function archivedConflict(resolved: ResolvedProject): never {
   throw createError({
     statusCode: 409,
     statusMessage: `Project ${resolved.ref.org}/${resolved.ref.project} is archived. An admin can unarchive it.`
   })
+}
+
+/**
+ * Takes the lock, then re-reads `archived_at`. setArchived does the mirror
+ * image — writes `archived_at`, then looks for a lock — so whichever of the
+ * two commits second sees the other and backs out. Without a transaction
+ * (Neon HTTP has none) that is what stops a run from holding a lock on a
+ * project that will refuse its state write.
+ */
+export async function acquireWritableLock(
+  resolved: ResolvedProject,
+  info: LockInfo
+): Promise<AcquireResult> {
+  const result = await acquireLock(resolved.id, info)
+  if (!result.ok) return result
+  const [found] = await db()
+    .select({ archivedAt: project.archivedAt })
+    .from(project)
+    .where(eq(project.id, resolved.id))
+  if (found?.archivedAt === null) return result
+  await releaseLock(resolved.id, info.ID)
+  archivedConflict(resolved)
 }
 
 /**
@@ -101,7 +126,7 @@ export async function handleLockAcquire(
 ): Promise<{ ok: true } | LockInfo> {
   assertWritable(resolved)
   const info = await readLockInfo(event)
-  const result = await acquireLock(resolved.id, info)
+  const result = await acquireWritableLock(resolved, info)
   if (!result.ok) {
     setResponseStatus(event, 423)
     return result.held
