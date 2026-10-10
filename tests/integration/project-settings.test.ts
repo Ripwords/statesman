@@ -1,6 +1,6 @@
 import { testEvent, isApiError } from '../ui/nitro-globals'
 import { describe, it, expect, beforeAll } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
   provisionUser,
   signInHeaders,
@@ -10,7 +10,8 @@ import {
   grantProjectRole
 } from '../protocol/helpers'
 import { db } from '../../server/db/client'
-import { project } from '../../server/db/schema'
+import { auditLog, project, projectAccess } from '../../server/db/schema'
+import patchProject from '../../server/api/ui/projects/[id].patch'
 import { requireProjectPermission, requireTokenAuthority } from '../../server/utils/project-access'
 import type { ProjectPermission } from '../../shared/project-permissions'
 
@@ -122,5 +123,65 @@ describe('archived guard', () => {
       const role = actor === u.admin ? ('admin' as const) : ('member' as const)
       expect(await status(requireTokenAuthority({ userId: actor.id, role }, scope))).toBe(409)
     }
+  })
+})
+
+function patch(actor: Actor, id: string, body: unknown): Promise<unknown> {
+  return patchProject(testEvent({ headers: actor.h, params: { id }, body }))
+}
+
+async function row(id: string) {
+  const [found] = await db().select().from(project).where(eq(project.id, id))
+  return found
+}
+
+describe('PATCH /api/ui/projects/:id', () => {
+  it('lets an owner rename and describe, and keeps the access row in step', async () => {
+    const pid = await fresh()
+    await patch(u.owner, pid, { name: 'Production', description: 'Main account' })
+    expect(await row(pid)).toMatchObject({ name: 'Production', description: 'Main account' })
+    const [access] = await db().select().from(projectAccess).where(eq(projectAccess.id, pid))
+    expect(access?.name).toBe('Production')
+  })
+
+  it('refuses an editor with 403', async () => {
+    const pid = await fresh()
+    expect(await status(patch(u.editor, pid, { name: 'x' }))).toBe(403)
+  })
+
+  it('refuses retention from an owner with 403 and changes nothing', async () => {
+    const pid = await fresh()
+    expect(await status(patch(u.owner, pid, { name: 'Renamed', retentionKeepDays: 7 }))).toBe(403)
+    expect(await row(pid)).toMatchObject({ name: slugs.get(pid), retentionKeepDays: null })
+  })
+
+  it('lets an admin set and clear retention', async () => {
+    const pid = await fresh()
+    await patch(u.admin, pid, { retentionKeepDays: 7, retentionKeepVersions: 10 })
+    expect(await row(pid)).toMatchObject({ retentionKeepDays: 7, retentionKeepVersions: 10 })
+    await patch(u.admin, pid, { retentionKeepDays: null })
+    expect(await row(pid)).toMatchObject({ retentionKeepDays: null, retentionKeepVersions: 10 })
+  })
+
+  it('rejects a slug field with 400', async () => {
+    const pid = await fresh()
+    expect(await status(patch(u.admin, pid, { slug: 'moved' }))).toBe(400)
+  })
+
+  it('still renames an archived project', async () => {
+    const pid = await fresh()
+    await archive(pid)
+    await patch(u.owner, pid, { name: 'Retired' })
+    expect((await row(pid))?.name).toBe('Retired')
+  })
+
+  it('audits field names, not values', async () => {
+    const pid = await fresh()
+    await patch(u.owner, pid, { name: 'Secretly', description: 'hush' })
+    const [entry] = await db()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.projectId, pid), eq(auditLog.action, 'project.update')))
+    expect(entry?.metaJson).toEqual({ fields: ['description', 'name'] })
   })
 })
