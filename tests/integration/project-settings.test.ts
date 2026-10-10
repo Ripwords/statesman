@@ -15,6 +15,9 @@ import patchProject from '../../server/api/ui/projects/[id].patch'
 import archiveRoute from '../../server/api/ui/projects/[id]/archive.post'
 import unarchiveRoute from '../../server/api/ui/projects/[id]/unarchive.post'
 import { acquireLock } from '../../server/services/lock'
+import deleteRoute from '../../server/api/ui/projects/[id].delete'
+import { writeState } from '../../server/services/state'
+import { store } from '../../server/storage'
 import { requireProjectPermission, requireTokenAuthority } from '../../server/utils/project-access'
 import type { ProjectPermission } from '../../shared/project-permissions'
 
@@ -241,5 +244,55 @@ describe('archive and unarchive', () => {
     await hit(unarchiveRoute, u.admin, pid)
     expect((await row(pid))?.archivedAt).toBeNull()
     expect(await audits(pid, 'project.unarchive')).toBe(1)
+  })
+})
+
+describe('DELETE /api/ui/projects/:id', () => {
+  async function withState(): Promise<{ pid: string; prefix: string }> {
+    const pid = await fresh()
+    for (const serial of [1, 2]) {
+      await writeState({
+        projectId: pid,
+        orgSlug: ORG,
+        projectSlug: slugs.get(pid) ?? '',
+        body: Buffer.from(JSON.stringify({ version: 4, serial })),
+        userId: u.admin.id
+      })
+    }
+    return { pid, prefix: `${ORG}/${slugs.get(pid)}/` }
+  }
+
+  it('refuses to delete an active project with 409', async () => {
+    const pid = await fresh()
+    expect(await status(hit(deleteRoute, u.admin, pid))).toBe(409)
+    expect(await row(pid)).toBeDefined()
+  })
+
+  it('refuses a non-admin with 403', async () => {
+    const pid = await fresh()
+    await archive(pid)
+    expect(await status(hit(deleteRoute, u.owner, pid))).toBe(403)
+  })
+
+  it('removes every blob and row, and keeps the audit record', async () => {
+    const { pid, prefix } = await withState()
+    expect(await store().list(prefix)).toHaveLength(2)
+    await archive(pid)
+    await hit(deleteRoute, u.admin, pid)
+    expect(await store().list(prefix)).toEqual([])
+    expect(await row(pid)).toBeUndefined()
+    const [entry] = await db()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.projectId, pid), eq(auditLog.action, 'project.delete')))
+    expect(entry?.metaJson).toEqual({ org: ORG, project: slugs.get(pid), versions: 2 })
+  })
+
+  it('finishes on retry after the blobs were already removed', async () => {
+    const { pid, prefix } = await withState()
+    await archive(pid)
+    for (const key of await store().list(prefix)) await store().delete(key)
+    await hit(deleteRoute, u.admin, pid)
+    expect(await row(pid)).toBeUndefined()
   })
 })

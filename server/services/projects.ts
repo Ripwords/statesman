@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { db } from '../db/client'
-import { project, projectAccess } from '../db/schema'
+import { organization, project, projectAccess, projectState, stateVersion } from '../db/schema'
 import { recordAuditBestEffort } from './audit'
 import { currentLock } from './lock'
+import { store } from '../storage'
 import { NOT_FOUND } from '../utils/project-access'
 import type { UpdateProjectInput } from '../../shared/schemas/project'
 
@@ -76,4 +77,55 @@ export async function setArchived(input: {
     actorId: input.actorId,
     action: input.archived ? 'project.archive' : 'project.unarchive'
   })
+}
+
+export const DELETE_ACTIVE = 'Archive the project before deleting it.'
+
+/**
+ * Deletes an archived project for good (spec §4). Blobs go first: an archived
+ * project takes no writes, so nothing adds one meanwhile, and a crash part-way
+ * leaves an archived project that a retry finishes. Rows first would strand
+ * encrypted blobs under a prefix a later project with this slug inherits.
+ */
+export async function deleteProject(input: {
+  projectId: string
+  actorId: string
+}): Promise<{ versions: number; blobs: number }> {
+  const [found] = await db()
+    .select({
+      orgId: project.orgId,
+      slug: project.slug,
+      orgSlug: organization.slug,
+      archivedAt: project.archivedAt
+    })
+    .from(project)
+    .innerJoin(organization, eq(project.orgId, organization.id))
+    .where(eq(project.id, input.projectId))
+  if (!found) throw createError({ statusCode: 404, statusMessage: NOT_FOUND })
+  if (found.archivedAt === null) {
+    throw createError({ statusCode: 409, statusMessage: DELETE_ACTIVE })
+  }
+  const [counted] = await db()
+    .select({ n: count() })
+    .from(stateVersion)
+    .where(eq(stateVersion.projectId, input.projectId))
+  const versions = counted?.n ?? 0
+
+  const keys = await store().list(`${found.orgSlug}/${found.slug}/`)
+  for (const key of keys) await store().delete(key)
+
+  // Before the row goes; audit_log has no FK, so the record outlives it.
+  await recordAuditBestEffort({
+    orgId: found.orgId,
+    projectId: input.projectId,
+    actorType: 'user',
+    actorId: input.actorId,
+    action: 'project.delete',
+    meta: { org: found.orgSlug, project: found.slug, versions }
+  })
+  // The pointer first: its FK to state_version is RESTRICT, and the cascade
+  // from project reaches both tables in no guaranteed order.
+  await db().delete(projectState).where(eq(projectState.projectId, input.projectId))
+  await db().delete(project).where(eq(project.id, input.projectId))
+  return { versions, blobs: keys.length }
 }
