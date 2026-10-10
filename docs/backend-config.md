@@ -199,7 +199,7 @@ working key.
 | `S3_ACCESS_KEY_ID` | no | — | omit both to use the AWS default credential chain (instance role, SSO) |
 | `S3_SECRET_ACCESS_KEY` | no | — | |
 | `RETENTION_KEEP_VERSIONS` | no | `100` | |
-| `RETENTION_KEEP_DAYS` | no | `30` | a version is pruned only when it is past **both** |
+| `RETENTION_KEEP_DAYS` | no | `30` | a version is pruned only when it is past **both**; an admin can override either for one project on its **Settings** tab |
 | `STATESMAN_ORG_SLUG` | no | `acme` | `pnpm db:seed` only |
 | `STATESMAN_SEED_PROJECTS` | no | `prod` | `pnpm db:seed` only; comma-separated |
 

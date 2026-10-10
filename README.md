@@ -163,11 +163,44 @@ GitHub App that you register for your own deployment. Without one the tab shows
 no repository panel at all. [docs/github-app.md](docs/github-app.md) walks
 through registering it, connecting it and fixing a failed sync.
 
+## Project settings
+
+Each project has a **Settings** tab. Everyone with a role on the project can
+open it; what they can change depends on the role.
+
+- **General** — the display name and an optional description. An owner or
+  admin edits them; everyone else sees them read-only. The display name is
+  only a label: the project's address, `org/slug`, never changes, so backend
+  blocks, tokens and variable downloads keep working after a rename.
+- **Backend Configuration** — the `backend "http"` block for this project,
+  with a **Copy** button. It is the same block shown when the project was
+  created, kept here for later.
+- **Retention** — how many versions and how many days of history to keep for
+  this project. An admin sets either value or leaves it blank to use the
+  deployment default (see [Operational notes](#operational-notes)); everyone
+  else sees the values in effect and where they come from.
+- **Danger Zone** — admins only.
+  - **Archive** makes the project read-only and hides it from the project
+    list. Terraform can still read the state, but writes and locks answer
+    `409 Project org/slug is archived. An admin can unarchive it.`, and the
+    dashboard refuses rollbacks, environment and variable changes and
+    repository syncs. Reading, downloading variables, renaming, managing
+    members and clearing a stuck lock still work. A project with a held lock
+    cannot be archived; let the run finish or force-unlock it first. The list shows
+    archived projects again when **Show archived** is on, and an archived
+    project's page carries a banner. **Unarchive** reverses it; nothing is
+    lost in between.
+  - **Delete** is available only on an archived project, and asks you to type
+    its `org/slug` to confirm. It permanently removes every state version,
+    environment, variable and member, and deletes the encrypted state from
+    blob storage. There is no undo.
+
 ## Roles and project access
 
-There is no public sign-up — `POST /api/auth/sign-up/email` is refused — and
-accounts exist only because an operator ran `pnpm user:create`, which needs
-database access and `BETTER_AUTH_SECRET`.
+There is no public sign-up — `POST /api/auth/sign-up/email` is refused.
+Accounts are created by an admin, either from the **Users** page in the
+dashboard or with `pnpm user:create`, which needs database access and
+`BETTER_AUTH_SECRET`.
 
 There are two levels. A **deployment admin** manages the whole deployment and
 sees every project. Every other account is a **member** of the deployment and
@@ -189,10 +222,12 @@ project is absent from its list and its address answers 404.
 | Link / unlink a repository                              | no     | no     | yes   | yes              |
 | Roll back                                               | no     | no     | yes   | yes              |
 | Add, remove members, change their roles                 | no     | no     | yes   | yes              |
+| Edit the display name and description                   | no     | no     | yes   | yes              |
 | Create tokens scoped to this project                    | no     | no     | yes   | yes              |
 | Create projects                                         | —      | —      | —     | yes              |
+| Archive, unarchive, delete projects; set retention      | —      | —      | —     | yes              |
 | Tokens with `all` scope                                 | —      | —      | —     | yes              |
-| Manage accounts, deployment roles, passwords            | —      | —      | —     | yes              |
+| Create and manage accounts, deployment roles, passwords | —      | —      | —     | yes              |
 | Connect the GitHub App, run retention                   | —      | —      | —     | yes              |
 
 An account sees only projects it has a role on. Admins see every project, with
@@ -211,12 +246,16 @@ endpoint that could undo it.
 
 ### Adding people
 
-1. An admin creates the account: `pnpm user:create them@example.com`.
+1. An admin creates the account: on the **Users** page choose **New User**,
+   enter the email, an optional name and a role, and pass on the generated
+   password, which is shown once. `pnpm user:create them@example.com` does the
+   same from a shell.
 2. An owner of the project, or an admin, opens the project's **Members** tab,
    chooses **Add Member**, enters the account's email and a role.
 
 Owners must type the exact email of an existing account; there is no directory
-to browse, and an unknown email is refused. Anyone with a role on the project
+to browse, and an unknown email is refused; an admin who tries one is offered a
+link to the **Users** page to create the account. Anyone with a role on the project
 can see its member list. On the same tab an owner changes a member's role from
 the role select on their row, or removes them. A project may end up with no
 owner; an admin can always recover it, and the dashboard asks for confirmation
@@ -368,9 +407,14 @@ answer.
   single-organization deployment. A duplicate is a 409, a slug the router could
   not resolve is a 400. `pnpm db:seed` is the same thing without a browser.
 - **Retention thresholds** keep the last 100 versions and everything from the
-  last 30 days, whichever is greater. The current version is never pruned, and
+  last 30 days, whichever is greater. An admin can override either number for
+  one project on its **Settings** tab; a blank field falls back to the
+  deployment default, `RETENTION_KEEP_VERSIONS` and `RETENTION_KEEP_DAYS`. The current version is never pruned, and
   an orphaned blob is left alone for an hour before it is swept, because a blob
   younger than that may be a write still in progress.
+- **Deleting a project** is permanent. It removes the database rows and the
+  encrypted state blobs under `org/slug/` in the blob store, so a backup of
+  the database alone cannot bring it back. Archive instead when in doubt.
 - **`GET /api/health`** is unauthenticated and runs four probes — encryption
   key round-trip, database, migrations applied, blob store writable. It reports
   names and pass/fail only, never configuration.
