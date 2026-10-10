@@ -9,6 +9,7 @@ export type ProjectPermission =
   | 'environment:link'
   | 'environment:sync'
   | 'variable:write'
+  | 'variable:download'
   | 'member:manage'
   | 'token:create'
 
@@ -24,6 +25,7 @@ export const MIN_ROLE: Record<ProjectPermission, ProjectRole> = {
   'environment:create': 'owner',
   'environment:delete': 'owner',
   'environment:link': 'owner',
+  'variable:download': 'owner',
   'member:manage': 'owner',
   'token:create': 'owner'
 }

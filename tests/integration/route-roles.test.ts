@@ -33,6 +33,7 @@ import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
 import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
+import downloadVariables from '../../server/api/ui/environments/[id]/variables/download.get'
 import githubInstall from '../../server/api/github/install.get'
 import githubSetup from '../../server/api/github/setup.get'
 import githubStatus from '../../server/api/ui/github.get'
@@ -224,6 +225,11 @@ const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
     'POST /api/ui/environments/:id/variables/import',
     (h, i) => importVariables(testEvent({ headers: h, params: { id: i.envId }, body: {} })),
     EDIT
+  ],
+  [
+    'GET /api/ui/environments/:id/variables/download',
+    (h, i) => downloadVariables(testEvent({ headers: h, params: { id: i.envId } })),
+    OWN
   ],
   [
     'PUT /api/ui/environments/:id/link',

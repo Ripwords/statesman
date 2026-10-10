@@ -1,4 +1,4 @@
-import { testEvent } from './nitro-globals'
+import { testEvent, responseOf } from './nitro-globals'
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
@@ -23,6 +23,7 @@ import listVariables from '../../server/api/ui/environments/[id]/variables.get'
 import putVariable from '../../server/api/ui/environments/[id]/variables/[name].put'
 import deleteVariable from '../../server/api/ui/environments/[id]/variables/[name].delete'
 import importVariables from '../../server/api/ui/environments/[id]/variables/import.post'
+import downloadVariables from '../../server/api/ui/environments/[id]/variables/download.get'
 import putLink from '../../server/api/ui/environments/[id]/link.put'
 import syncNow from '../../server/api/ui/environments/[id]/sync.post'
 import unlink from '../../server/api/ui/environments/[id]/link.delete'
@@ -172,6 +173,36 @@ describe('variables', () => {
  * route rather than one: a sensitive value must not appear in any of them,
  * raw or sealed, nor in the audit rows the writes leave behind.
  */
+describe('downloading an environment as .tfvars', () => {
+  it('gives an owner every value, sensitive ones included, as an attachment', async () => {
+    const event = testEvent({ headers: admin, params: { id: envId } })
+    const body = await downloadVariables(event)
+    expect(body).toContain(`pw = "${CANARY}"`)
+    expect(body).toContain('region = "eu"')
+    expect(responseOf(event).headers).toMatchObject({
+      'content-disposition': 'attachment; filename="statesman.auto.tfvars"',
+      'cache-control': 'no-store'
+    })
+  })
+
+  it('refuses a viewer with 403', async () => {
+    await expect(
+      downloadVariables(testEvent({ headers: member, params: { id: envId } }))
+    ).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('audits the download without the values', async () => {
+    await downloadVariables(testEvent({ headers: admin, params: { id: envId } }))
+    const rows = await db().select().from(auditLog).where(eq(auditLog.action, 'variables.download'))
+    const mine = rows.filter((r) => r.projectId === projectId)
+    expect(mine.length).toBeGreaterThan(0)
+    expect(mine[0]).toMatchObject({ actorType: 'user', actorId: adminId })
+    expect(JSON.stringify(mine)).not.toContain(CANARY)
+  })
+})
+
+// The download above is the one deliberate exit, for owners; every other route
+// stays sealed.
 describe('sensitive values never leave through the UI', () => {
   const INSTALLATION = 9_200_002
   const { privateKey } = generateKeyPairSync('rsa', {

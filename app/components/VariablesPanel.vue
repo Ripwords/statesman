@@ -134,9 +134,16 @@ async function onEnvironmentCreated(created: { slug: string }) {
 }
 
 const projectPath = computed(() => String(route.params.org) + '/' + String(route.params.project))
-const curl = computed(
-  () =>
-    `curl -fsS -u "statesman:$STATESMAN_TOKEN" ${origin}/api/vars/${projectPath.value}/${env.value?.slug ?? '<env>'} -o statesman.auto.tfvars.json`
+const deliveryUrl = computed(
+  () => `${origin}/api/vars/${projectPath.value}/${env.value?.slug ?? '<env>'}`
+)
+const curl = computed(() =>
+  [
+    `curl -fsS -u "statesman:$STATESMAN_TOKEN" "${deliveryUrl.value}?format=tfvars" -o statesman.auto.tfvars`,
+    '',
+    '# or as JSON',
+    `curl -fsS -u "statesman:$STATESMAN_TOKEN" ${deliveryUrl.value} -o statesman.auto.tfvars.json`
+  ].join('\n')
 )
 </script>
 
@@ -175,6 +182,18 @@ const curl = computed(
               color="neutral"
               variant="outline"
               @click="importOpen = true"
+            />
+          </ProjectOnly>
+          <ProjectOnly v-if="envId && storedCount > 0" :role="role" permission="variable:download">
+            <UButton
+              label="Download .tfvars"
+              icon="i-lucide-download"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              :to="`/api/ui/environments/${envId}/variables/download`"
+              external
+              download="statesman.auto.tfvars"
             />
           </ProjectOnly>
           <ProjectOnly :role="role" permission="environment:create">
@@ -288,9 +307,12 @@ const curl = computed(
       </UTable>
 
       <details class="rounded-lg border border-default px-4 py-3 text-sm">
-        <summary class="cursor-pointer font-medium">Use in CI</summary>
+        <summary class="cursor-pointer font-medium">Download from a terminal or pipeline</summary>
         <p class="mt-3 text-muted text-pretty">
-          Download this environment as a tfvars file, using a token with Read Variables.
+          Fetch this environment with a token that has Read Variables. Terraform loads
+          <code translate="no">*.auto.tfvars</code> on its own, so
+          <code>terraform apply</code> needs no extra flags. Keep the file out of git: it holds the
+          secrets.
         </p>
         <pre
           class="mt-2 overflow-x-auto rounded-md bg-muted p-3 text-xs [overscroll-behavior-x:contain]"

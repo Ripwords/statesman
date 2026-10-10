@@ -56,6 +56,7 @@ type TestEventContext = {
   query: Record<string, string>
   cookieWrites: CookieWrite[]
   redirect: string | null
+  responseHeaders: Record<string, string>
 }
 
 function contextOf(event: H3Event): TestEventContext {
@@ -65,7 +66,8 @@ function contextOf(event: H3Event): TestEventContext {
     body: context.body,
     query: context.query ?? {},
     cookieWrites: context.cookieWrites ?? [],
-    redirect: context.redirect ?? null
+    redirect: context.redirect ?? null,
+    responseHeaders: context.responseHeaders ?? {}
   }
 }
 
@@ -101,6 +103,10 @@ Object.assign(globalThis, {
     writeCookie(event, { name, value, options }),
   deleteCookie: (event: H3Event, name: string, options: CookieOptions = {}) =>
     writeCookie(event, { name, value: null, options }),
+  setResponseHeader: (event: H3Event, name: string, value: string) => {
+    const context = eventContext(event)
+    context.responseHeaders = { ...context.responseHeaders, [name.toLowerCase()]: value }
+  },
   // h3 answers a redirect with 302 and a Location header; the test reads where it pointed.
   sendRedirect: (event: H3Event, location: string) => {
     eventContext(event).redirect = location
@@ -131,11 +137,12 @@ export function testEvent(init: TestEventInit = {}): H3Event {
   } as unknown as H3Event
 }
 
-/** What a handler did to the response, for tests that drive cookie and redirect routes. */
+/** What a handler did to the response, for tests that drive cookie, redirect and header routes. */
 export function responseOf(event: H3Event): {
   cookieWrites: CookieWrite[]
   redirect: string | null
+  headers: Record<string, string>
 } {
-  const { cookieWrites, redirect } = contextOf(event)
-  return { cookieWrites, redirect }
+  const { cookieWrites, redirect, responseHeaders } = contextOf(event)
+  return { cookieWrites, redirect, headers: responseHeaders }
 }

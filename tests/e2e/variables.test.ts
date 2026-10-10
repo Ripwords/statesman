@@ -16,6 +16,8 @@ const run = promisify(execFile)
 const ORG = 'tf-vars'
 let dir: string
 let token: string
+let envId: string
+let userId: string
 
 beforeAll(async () => {
   await resetDb(ORG)
@@ -26,6 +28,8 @@ beforeAll(async () => {
     'admin'
   )
   const env = await createEnvironment(projectId, 'production')
+  envId = env.id
+  userId = user.id
   await setVariable({
     environmentId: env.id,
     name: 'value',
@@ -70,5 +74,26 @@ describe('real terraform with delivered variables', () => {
     await run('terraform', ['apply', '-auto-approve', '-no-color'], { cwd: dir, env })
     const { stdout } = await run('terraform', ['output', '-raw', 'canary'], { cwd: dir, env })
     expect(stdout.trim()).toBe('two-3')
+  })
+
+  it('applies with the downloaded .tfvars file instead', async () => {
+    // A changed value, so the result proves this file was read and not the last.
+    await setVariable({
+      environmentId: envId,
+      name: 'replicas',
+      input: { value: 5, sensitive: false },
+      userId
+    })
+    const response = await fetch(absoluteUrl(`/api/vars/${ORG}/app/production?format=tfvars`), {
+      headers: { authorization: `Basic ${Buffer.from(`statesman:${token}`).toString('base64')}` }
+    })
+    expect(response.status).toBe(200)
+    await rm(join(dir, 'statesman.auto.tfvars.json'))
+    await writeFile(join(dir, 'statesman.auto.tfvars'), await response.text())
+
+    const env = { ...process.env, TF_IN_AUTOMATION: '1', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' }
+    await run('terraform', ['apply', '-auto-approve', '-no-color'], { cwd: dir, env })
+    const { stdout } = await run('terraform', ['output', '-raw', 'canary'], { cwd: dir, env })
+    expect(stdout.trim()).toBe('two-5')
   })
 })

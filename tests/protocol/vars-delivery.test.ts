@@ -101,6 +101,32 @@ describe('GET /api/vars/:org/:project/:environment', () => {
     ).toBe(true)
   })
 })
+describe('GET /api/vars/:org/:project/:environment?format=tfvars', () => {
+  it('returns the same values as HCL, uncached, and audits the format', async () => {
+    const response = await get(`${path}?format=tfvars`, tokens.vars)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('content-type')).toMatch(/^text\/plain/)
+    expect(await response.text()).toBe('db_password = "hunter2"\nreplicas = 3\n')
+    const rows = await db().select().from(auditLog).where(eq(auditLog.action, 'variables.read'))
+    expect(rows.some((r) => (r.metaJson as { format?: string } | null)?.format === 'tfvars')).toBe(
+      true
+    )
+  })
+
+  it('still answers JSON for format=json', async () => {
+    const response = await get(`${path}?format=json`, tokens.vars)
+    expect(await response.json()).toEqual({ db_password: 'hunter2', replicas: 3 })
+  })
+
+  it('answers 400 for an unknown format, after authorization', async () => {
+    const response = await get(`${path}?format=yaml`, tokens.vars)
+    expect(response.status).toBe(400)
+    expect((await response.json()).statusMessage).toBe('format must be json or tfvars')
+    expect((await get(`${path}?format=yaml`, tokens.stateOnly)).status).toBe(403)
+  })
+})
+
 describe('GET /api/tf/:org/:project with a variables-only token', () => {
   it('answers 403: a vars token with no state permission cannot read state', async () => {
     expect((await get(`/api/tf/${ORG}/prod`, tokens.varsOnly)).status).toBe(403)
