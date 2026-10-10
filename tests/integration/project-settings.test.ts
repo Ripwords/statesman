@@ -12,6 +12,9 @@ import {
 import { db } from '../../server/db/client'
 import { auditLog, project, projectAccess } from '../../server/db/schema'
 import patchProject from '../../server/api/ui/projects/[id].patch'
+import archiveRoute from '../../server/api/ui/projects/[id]/archive.post'
+import unarchiveRoute from '../../server/api/ui/projects/[id]/unarchive.post'
+import { acquireLock } from '../../server/services/lock'
 import { requireProjectPermission, requireTokenAuthority } from '../../server/utils/project-access'
 import type { ProjectPermission } from '../../shared/project-permissions'
 
@@ -183,5 +186,60 @@ describe('PATCH /api/ui/projects/:id', () => {
       .from(auditLog)
       .where(and(eq(auditLog.projectId, pid), eq(auditLog.action, 'project.update')))
     expect(entry?.metaJson).toEqual({ fields: ['description', 'name'] })
+  })
+})
+
+function hit(
+  route: (e: ReturnType<typeof testEvent>) => Promise<unknown>,
+  actor: Actor,
+  id: string
+): Promise<unknown> {
+  return route(testEvent({ headers: actor.h, params: { id } }))
+}
+
+async function audits(pid: string, action: string): Promise<number> {
+  const rows = await db()
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(and(eq(auditLog.projectId, pid), eq(auditLog.action, action)))
+  return rows.length
+}
+
+describe('archive and unarchive', () => {
+  it('lets an admin archive, once', async () => {
+    const pid = await fresh()
+    await hit(archiveRoute, u.admin, pid)
+    await hit(archiveRoute, u.admin, pid)
+    expect((await row(pid))?.archivedAt).toBeInstanceOf(Date)
+    expect(await audits(pid, 'project.archive')).toBe(1)
+  })
+
+  it('refuses an owner with 403', async () => {
+    const pid = await fresh()
+    expect(await status(hit(archiveRoute, u.owner, pid))).toBe(403)
+    expect(await status(hit(unarchiveRoute, u.owner, pid))).toBe(403)
+  })
+
+  it('answers 404 for an unknown id', async () => {
+    expect(await status(hit(archiveRoute, u.admin, 'no-such-project'))).toBe(404)
+  })
+
+  it('refuses to archive a locked project with 409', async () => {
+    const pid = await fresh()
+    await acquireLock(pid, { ID: 'run-1' })
+    expect(await status(hit(archiveRoute, u.admin, pid))).toBe(409)
+    expect((await row(pid))?.archivedAt).toBeNull()
+  })
+
+  it('unarchives and audits, and does nothing to an active project', async () => {
+    const active = await fresh()
+    await hit(unarchiveRoute, u.admin, active)
+    expect(await audits(active, 'project.unarchive')).toBe(0)
+
+    const pid = await fresh()
+    await archive(pid)
+    await hit(unarchiveRoute, u.admin, pid)
+    expect((await row(pid))?.archivedAt).toBeNull()
+    expect(await audits(pid, 'project.unarchive')).toBe(1)
   })
 })

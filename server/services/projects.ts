@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
 import { project, projectAccess } from '../db/schema'
 import { recordAuditBestEffort } from './audit'
+import { currentLock } from './lock'
+import { NOT_FOUND } from '../utils/project-access'
 import type { UpdateProjectInput } from '../../shared/schemas/project'
 
 /**
@@ -38,5 +40,40 @@ export async function updateProject(input: {
     actorId: input.actorId,
     action: 'project.update',
     meta: { fields }
+  })
+}
+
+export const LOCKED_ARCHIVE =
+  'The state is locked. Let the run finish or force-unlock it, then archive.'
+
+/**
+ * Archives or unarchives (spec §4). Idempotent: asking for the state the
+ * project is already in changes nothing and writes no audit row. A held lock
+ * means a run is mid-write, which archiving would strand.
+ */
+export async function setArchived(input: {
+  projectId: string
+  actorId: string
+  archived: boolean
+}): Promise<void> {
+  const [found] = await db()
+    .select({ orgId: project.orgId, archivedAt: project.archivedAt })
+    .from(project)
+    .where(eq(project.id, input.projectId))
+  if (!found) throw createError({ statusCode: 404, statusMessage: NOT_FOUND })
+  if ((found.archivedAt !== null) === input.archived) return
+  if (input.archived && (await currentLock(input.projectId))) {
+    throw createError({ statusCode: 409, statusMessage: LOCKED_ARCHIVE })
+  }
+  await db()
+    .update(project)
+    .set({ archivedAt: input.archived ? new Date() : null })
+    .where(eq(project.id, input.projectId))
+  await recordAuditBestEffort({
+    orgId: found.orgId,
+    projectId: input.projectId,
+    actorType: 'user',
+    actorId: input.actorId,
+    action: input.archived ? 'project.archive' : 'project.unarchive'
   })
 }
