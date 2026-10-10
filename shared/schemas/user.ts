@@ -39,3 +39,11 @@ export function isAdmin(value: string | null | undefined): boolean {
 /** Body of `PATCH /api/ui/users/:id/role`. */
 export const changeRoleSchema = z.object({ role: userRoleSchema })
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>
+
+/** Body of `POST /api/ui/users`. The email is stored lowercased, as sign-in compares it. */
+export const createUserSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  name: z.string().trim().max(64).optional(),
+  role: userRoleSchema
+})
+export type CreateUserInput = z.infer<typeof createUserSchema>

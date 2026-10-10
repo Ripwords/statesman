@@ -1,9 +1,12 @@
-import { isApiError } from '../ui/nitro-globals'
+import { isApiError, testEvent } from '../ui/nitro-globals'
 import { describe, it, expect } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { user } from '../../server/db/schema'
-import { listAccounts, changeRole, resetPassword } from '../../server/services/users'
+import { auditLog, user } from '../../server/db/schema'
+import { listAccounts, changeRole, resetPassword, createAccount } from '../../server/services/users'
+import createUserRoute from '../../server/api/ui/users.post'
+import { addMember } from '../../server/services/members'
+import { createUserSchema } from '../../shared/schemas/user'
 import {
   provisionUser,
   signInHeaders,
@@ -168,3 +171,57 @@ async function refusalOf(
     }
   }
 }
+
+describe('createAccount', () => {
+  const fresh = () => `us-new-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`
+
+  it('creates an account whose generated password signs in, with the role asked for', async () => {
+    const { adminId, headers } = await pair()
+    const email = fresh()
+    const created = await createAccount({ actorId: adminId, email, role: 'admin', headers })
+    expect(created.email).toBe(email)
+    expect(created.password.length).toBeGreaterThanOrEqual(16)
+    await expect(signInHeaders(email, created.password)).resolves.toBeInstanceOf(Headers)
+    expect((await listAccounts()).find((a) => a.id === created.id)?.role).toBe('admin')
+  })
+
+  it('refuses an email that exists in a different case with 409', async () => {
+    const { adminId, memberEmail, headers } = await pair()
+    const shouted = createUserSchema.parse({ email: memberEmail.toUpperCase(), role: 'member' })
+    expect(await refusalOf(createAccount({ actorId: adminId, ...shouted, headers }))).toEqual({
+      apiError: true,
+      statusCode: 409
+    })
+  })
+
+  it('audits the email and role, never the password', async () => {
+    const { adminId, headers } = await pair()
+    const created = await createAccount({
+      actorId: adminId,
+      email: fresh(),
+      role: 'member',
+      headers
+    })
+    const [entry] = await db()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.actorId, adminId), eq(auditLog.action, 'user.create')))
+    expect(entry?.metaJson).toEqual({ email: created.email, role: 'member' })
+    expect(JSON.stringify(entry)).not.toContain(created.password)
+  })
+
+  it('refuses a member at the route with 403', async () => {
+    const { memberEmail } = await pair()
+    const memberHeaders = Object.fromEntries((await signInHeaders(memberEmail, PASSWORD)).entries())
+    const event = testEvent({ headers: memberHeaders, body: { email: fresh(), role: 'member' } })
+    expect(await refusalOf(createUserRoute(event))).toEqual({ apiError: true, statusCode: 403 })
+  })
+
+  it('points the add-member 404 at the Users page', async () => {
+    const { adminId } = await pair()
+    const projectId = await seedProject('usersvc', `p${Date.now()}`)
+    await expect(
+      addMember({ projectId, email: fresh(), role: 'viewer', actorId: adminId })
+    ).rejects.toMatchObject({ statusMessage: expect.stringContaining('Users page') })
+  })
+})

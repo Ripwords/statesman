@@ -63,7 +63,7 @@ export async function addMember(input: {
   if (!target)
     throw createError({
       statusCode: 404,
-      statusMessage: 'No account with that email. An admin creates accounts.'
+      statusMessage: 'No account with that email. An admin creates accounts on the Users page.'
     })
 
   await ensureAccessRecord(input.projectId, projectName)

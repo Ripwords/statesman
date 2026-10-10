@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { organization, project, projectMember, user } from '../db/schema'
 import { auth } from '../utils/auth'
+import { recordAuditBestEffort } from './audit'
 import { roleOf, type UserRole } from '../../shared/schemas/user'
 import { projectRoleSchema, type ProjectRole } from '../../shared/schemas/project-role'
 
@@ -171,4 +172,50 @@ export async function resetPassword(input: {
   await auth.api.revokeUserSessions({ body: { userId: input.targetId }, headers: input.headers })
 
   return { password }
+}
+
+/**
+ * audit_log.org_id is required and every other row names an org. An account
+ * belongs to the deployment, not an org; org ids are ULIDs, so this cannot
+ * collide with one.
+ */
+export const DEPLOYMENT_AUDIT_ORG = 'deployment'
+
+/**
+ * Creates an account from the dashboard (project-settings spec §4) and returns
+ * its generated password once, as resetPassword does. Through the admin
+ * plugin, so the caller's admin session is checked by the code that owns it.
+ */
+export async function createAccount(input: {
+  actorId: string
+  email: string
+  name?: string
+  role: UserRole
+  headers: Headers
+}): Promise<{ id: string; email: string; password: string }> {
+  const email = input.email.toLowerCase()
+  const existing = await db()
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(sql`lower(${user.email})`, email))
+  if (existing.length > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'An account with that email already exists.'
+    })
+  }
+
+  const password = randomBytes(18).toString('base64url')
+  const created = await auth.api.createUser({
+    body: { email, password, name: input.name || email.split('@')[0] || email, role: input.role },
+    headers: input.headers
+  })
+  await recordAuditBestEffort({
+    orgId: DEPLOYMENT_AUDIT_ORG,
+    actorType: 'user',
+    actorId: input.actorId,
+    action: 'user.create',
+    meta: { email, role: input.role }
+  })
+  return { id: created.user.id, email, password }
 }
