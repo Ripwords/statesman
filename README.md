@@ -184,8 +184,7 @@ open it; what they can change depends on the role.
     list. Terraform can still read the state, but writes and locks answer
     `409 Project org/slug is archived. An admin can unarchive it.`, and the
     dashboard refuses rollbacks, environment and variable changes and
-    repository syncs, including the ones a push to a linked branch would
-    trigger. Reading, downloading variables, renaming, managing
+    repository syncs. A push to a linked branch does not sync it either. Reading, downloading variables, renaming, managing
     members and clearing a stuck lock still work. A project with a held lock
     cannot be archived; let the run finish or force-unlock it first. The list shows
     archived projects again when **Show archived** is on, and an archived
