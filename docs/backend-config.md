@@ -131,7 +131,7 @@ and is the only kill switch — there is no reversible disable.
 | Control | Effect |
 |---|---|
 | Allowed operations | `read`, `write`, `delete`, `lock`. A `plan` needs read and lock; an `apply` needs write too. May be left empty for a variables-only token, but at least one permission, here or under Variables, must be granted |
-| Variables | *Read Variables* lets the token download the project's variables as a tfvars file, sensitive values included |
+| Variables | *Read Variables* lets the token download the project's variables, sensitive values included, from `/api/vars/<org>/<project>/<environment>`: `.tfvars.json` by default, or HCL `.tfvars` with `?format=tfvars` |
 | Project scope | **Specific Projects** (recommended) lists exact `org/project` pairs, and you must own every one (admins may name any). **All My Projects** covers every project and is admin-only |
 | Expiry | Optional, up to 3650 days |
 | Rate limit | Defaults to 120 requests/minute per key. One `apply` costs roughly 4–6 requests and a `plan` about 3 |

@@ -96,8 +96,9 @@ because it removes the platform question entirely.
 ## Variables
 
 Optional. statesman can also keep a project's Terraform variables (tfvars),
-encrypted at rest with the same key as state, and hand them to CI as a
-`.tfvars.json` file. Nothing changes for a project that does not use it.
+encrypted at rest with the same key as state, and hand them out as a `.tfvars`
+or `.tfvars.json` file, to a pipeline or to someone running `terraform apply`
+by hand. Nothing changes for a project that does not use it.
 
 On the project page, open the **Variables** tab. Variables live in an
 **environment** (`staging`, `prod`, or just `default`), so one project can carry
@@ -115,21 +116,38 @@ with two or more, a switcher appears.
 Variables are **sensitive** by default. A variable a linked repository declares
 but that has no value yet also opens with **Sensitive** on, whatever its
 `variable` block says. A sensitive value is write-only in the
-dashboard: it is shown as `••••••`, never sent back to the browser, and an edit
-that leaves the value empty keeps the current one. Only a token with **Read
-Variables** can read it, through the download below. Anything you mark as not
-sensitive is shown in the table.
+dashboard: it is shown as `••••••`, never shown in the table or the edit form,
+and an edit that leaves the value empty keeps the current one. It leaves
+statesman only in a downloaded file (below). Anything you mark as not sensitive
+is shown in the table.
 
-Download an environment from CI with a token that has **Read Variables**:
+**Downloading.** Every download holds every value, sensitive ones included, and
+is recorded in the audit log.
 
-```bash
-curl -fsS -u "statesman:$STATESMAN_TOKEN" \
-  http://localhost:3000/api/vars/acme/prod/default \
-  -o statesman.auto.tfvars.json
-```
+- **From the dashboard:** an owner or admin clicks **Download .tfvars** on the
+  Variables tab and gets `statesman.auto.tfvars`. Viewers and editors do not see
+  the button.
+- **From a terminal or a pipeline:** use a token with **Read Variables**. The
+  Variables tab shows these commands, filled in, under **Download from a
+  terminal or pipeline**:
 
-Terraform loads `*.auto.tfvars.json` on its own. Add `statesman.auto.tfvars.json`
-to `.gitignore`, because the file holds the secrets.
+  ```bash
+  # HCL, as you would write it by hand
+  curl -fsS -u "statesman:$STATESMAN_TOKEN" \
+    "http://localhost:3000/api/vars/acme/prod/default?format=tfvars" \
+    -o statesman.auto.tfvars
+
+  # or JSON (the default)
+  curl -fsS -u "statesman:$STATESMAN_TOKEN" \
+    http://localhost:3000/api/vars/acme/prod/default \
+    -o statesman.auto.tfvars.json
+  ```
+
+  `format` is `json` (the default) or `tfvars`; anything else answers 400.
+
+Terraform loads `*.auto.tfvars` and `*.auto.tfvars.json` on its own, so
+`terraform plan` and `apply` need no `-var-file`. Add both file names to
+`.gitignore`, because the file holds the secrets.
 
 A value for which the configuration has no matching `variable` block makes
 Terraform print a warning. It does not fail the run.
@@ -162,8 +180,9 @@ project is absent from its list and its address answers 404.
 | See the project in the list, read state, versions, diff | yes    | yes    | yes   | yes (all)        |
 | See environments, variable names, statuses              | yes    | yes    | yes   | yes              |
 | See non-sensitive values                                | yes    | yes    | yes   | yes              |
-| See sensitive values                                    | no     | no     | no    | no               |
+| See sensitive values in the dashboard                   | no     | no     | no    | no               |
 | Create, edit, delete, import variables                  | no     | yes    | yes   | yes              |
+| Download variables as `.tfvars` (sensitive included)    | no     | no     | yes   | yes              |
 | Sync a linked repository                                | no     | yes    | yes   | yes              |
 | Force unlock                                            | no     | yes    | yes   | yes              |
 | Create, delete environments                             | no     | no     | yes   | yes              |
@@ -185,8 +204,10 @@ promote it — and every account after that is a member unless you pass
 be left with nobody able to manage accounts, projects or retention and no
 endpoint that could undo it.
 
-> Sensitive variables are write-only in the dashboard for every role, admins
-> included. Only a token with **Read Variables** can read them.
+> Sensitive variables are write-only in the dashboard's table and forms for
+> every role, admins included. They leave statesman only in a download: the
+> **Download .tfvars** button (owners and admins), or a token with **Read
+> Variables**.
 
 ### Adding people
 

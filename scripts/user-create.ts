@@ -10,9 +10,9 @@ const USAGE =
   'Usage: pnpm user:create <email> [name] [--role admin|member]\n' +
   '   or: STATESMAN_USER_EMAIL=... [STATESMAN_USER_PASSWORD=...] [STATESMAN_USER_ROLE=...] pnpm user:create\n' +
   '\n' +
-  'Roles: admin manages accounts, roles, tokens, locks and history.\n' +
-  '       member reads projects, versions and diffs.\n' +
-  'Both read every project’s decrypted state. The first account is always an admin.'
+  'Roles: admin manages accounts and reaches every project.\n' +
+  '       member reaches only the projects an owner or admin adds it to.\n' +
+  'The first account is always an admin.'
 
 let args
 try {
