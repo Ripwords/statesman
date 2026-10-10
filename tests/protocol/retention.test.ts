@@ -4,7 +4,8 @@ import { writeState, listVersions, readCurrentState } from '../../server/service
 import { store } from '../../server/storage'
 import { ulid } from 'ulid'
 import { db } from '../../server/db/client'
-import { stateVersion } from '../../server/db/schema'
+import { eq } from 'drizzle-orm'
+import { project, stateVersion } from '../../server/db/schema'
 import { seedProject, seedUser, resetDb } from './helpers'
 
 // This suite owns this organization slug; see resetDb in ./helpers.
@@ -44,6 +45,20 @@ async function seedOldVersion(index: number): Promise<void> {
 }
 
 describe('retention', () => {
+  it('uses the project override over the deployment default', async () => {
+    await db()
+      .update(project)
+      .set({ retentionKeepVersions: 2, retentionKeepDays: 1 })
+      .where(eq(project.id, projectId))
+    await writeState({ projectId, orgSlug: ORG, projectSlug: 'prod', body: body(99), userId: 'u' })
+    for (let i = 1; i <= 5; i++) await seedOldVersion(i)
+
+    await runRetention(projectId)
+    // The current version plus the newest old one: two, where the default of
+    // 100 would have kept all six.
+    expect(await listVersions(projectId)).toHaveLength(2)
+  })
+
   it('keeps everything below the version threshold', async () => {
     for (let i = 1; i <= 5; i++) {
       await writeState({ projectId, orgSlug: ORG, projectSlug: 'prod', body: body(i), userId: 'u' })

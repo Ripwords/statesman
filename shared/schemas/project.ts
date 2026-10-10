@@ -29,3 +29,27 @@ export const createProjectSchema = z.object({
   project: slug
 })
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
+
+const retention = z.number().int().positive().max(100_000).nullable()
+
+/**
+ * Body of `PATCH /api/ui/projects/:id`. Strict, so a `slug` field is a 400
+ * rather than silently ignored: the slug is in every backend address, token
+ * scope and blob key, and is not a setting (project-settings spec §1).
+ *
+ * A blank description is stored as null, so "cleared" has one representation.
+ */
+export const updateProjectSchema = z
+  .object({
+    name: z.string().trim().min(1).max(64),
+    description: z
+      .string()
+      .max(500)
+      .transform((s) => (s.trim() === '' ? null : s.trim()))
+      .nullable(),
+    retentionKeepVersions: retention,
+    retentionKeepDays: retention
+  })
+  .partial()
+  .strict()
+export type UpdateProjectInput = z.infer<typeof updateProjectSchema>

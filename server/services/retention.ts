@@ -4,17 +4,30 @@ import { db } from '../db/client'
 import { stateVersion, projectState, project, organization } from '../db/schema'
 import { store } from '../storage'
 import { env } from '../utils/env'
+import { effectiveRetention } from '../../shared/retention'
 import { mapWithConcurrency } from '../utils/concurrency'
 
 /**
  * Spec §10: keep the last N versions AND everything from the last D days,
  * whichever is greater — so a version is pruned only when it is BOTH beyond
  * the count and older than the window. The current version is never pruned.
+ * N and D are the project's own when set (project-settings spec §6).
  */
 export async function runRetention(
   projectId: string
 ): Promise<{ prunedVersions: number; sweptBlobs: number }> {
   const config = env()
+  const overrides = await db()
+    .select({
+      keepVersions: project.retentionKeepVersions,
+      keepDays: project.retentionKeepDays
+    })
+    .from(project)
+    .where(eq(project.id, projectId))
+  const policy = effectiveRetention(overrides[0] ?? { keepVersions: null, keepDays: null }, {
+    keepVersions: config.RETENTION_KEEP_VERSIONS,
+    keepDays: config.RETENTION_KEEP_DAYS
+  })
 
   const rows = await db()
     .select({ id: projectState.currentVersionId })
@@ -28,10 +41,9 @@ export async function runRetention(
     .where(eq(stateVersion.projectId, projectId))
     .orderBy(desc(stateVersion.createdAt))
 
-  const cutoff = new Date(Date.now() - config.RETENTION_KEEP_DAYS * 86_400_000)
+  const cutoff = new Date(Date.now() - policy.keepDays * 86_400_000)
   const doomed = all.filter(
-    (v, index) =>
-      v.id !== currentId && index >= config.RETENTION_KEEP_VERSIONS && v.createdAt < cutoff
+    (v, index) => v.id !== currentId && index >= policy.keepVersions && v.createdAt < cutoff
   )
 
   if (doomed.length > 0) {

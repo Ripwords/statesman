@@ -144,6 +144,12 @@ export const project = pgTable(
       .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
+    description: text('description'),
+    // Null is active. Who archived it is in the audit log (project-settings spec §2).
+    archivedAt: timestamp('archived_at'),
+    // Null falls back to RETENTION_KEEP_VERSIONS / RETENTION_KEEP_DAYS.
+    retentionKeepVersions: integer('retention_keep_versions'),
+    retentionKeepDays: integer('retention_keep_days'),
     createdAt: timestamp('created_at').notNull().defaultNow()
   },
   (t) => [uniqueIndex('project_org_slug_uq').on(t.orgId, t.slug)]
