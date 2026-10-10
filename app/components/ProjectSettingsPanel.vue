@@ -20,7 +20,9 @@ function resetGeneral() {
   general.description = props.project.description ?? ''
 }
 resetGeneral()
-watch(() => [props.project.name, props.project.description], resetGeneral)
+// Watch the values, not a fresh array or object: every list refresh rebuilds
+// the row, and saving one form must not wipe unsaved edits in the other.
+watch([() => props.project.name, () => props.project.description], resetGeneral)
 
 const savingGeneral = ref(false)
 const generalError = ref<string | null>(null)
@@ -85,7 +87,15 @@ function resetRetention() {
   retentionState.days = r.source.days === 'project' ? String(r.keepDays) : ''
 }
 resetRetention()
-watch(() => props.project.retention, resetRetention, { deep: true })
+watch(
+  [
+    () => props.project.retention.source.versions,
+    () => props.project.retention.keepVersions,
+    () => props.project.retention.source.days,
+    () => props.project.retention.keepDays
+  ],
+  resetRetention
+)
 
 // The deployment default is what a blank field falls back to. When the
 // project overrides a value the list no longer carries the default, so the
