@@ -6,7 +6,6 @@ import { FetchError } from 'ofetch'
 const route = useRoute()
 const org = computed(() => String(route.params.org))
 const slug = computed(() => String(route.params.project))
-useHead({ title: () => `${org.value}/${slug.value} · statesman` })
 
 // Shares a cache key with the project list, so arriving from there costs no
 // extra request. Row types come from Nitro's typed routes.
@@ -18,6 +17,10 @@ const {
 const current = computed(
   () => projects.value?.find((p) => p.org === org.value && p.slug === slug.value) ?? null
 )
+// The display name leads once someone has set one; the address is still the
+// project's identity, so it stays visible under a differing name.
+const renamed = computed(() => current.value !== null && current.value.name !== slug.value)
+useHead({ title: () => `${current.value?.name ?? `${org.value}/${slug.value}`} · statesman` })
 
 // An address that names no project is a 404, not a 200 with a sad face on it.
 // Only when the list actually loaded, though: a failed request must not be
@@ -67,11 +70,13 @@ const myRole = computed(() => current.value?.myRole ?? null)
 const tabItems = [
   { label: 'State', value: 'state' },
   { label: 'Variables', value: 'variables' },
-  { label: 'Members', value: 'members' }
+  { label: 'Members', value: 'members' },
+  { label: 'Settings', value: 'settings' }
 ]
+const TABS = new Set(['variables', 'members', 'settings'])
 const tab = computed({
   get: () =>
-    route.query.tab === 'variables' || route.query.tab === 'members' ? route.query.tab : 'state',
+    typeof route.query.tab === 'string' && TABS.has(route.query.tab) ? route.query.tab : 'state',
   set: (value: string) => {
     void navigateTo({ query: { ...route.query, tab: value === 'state' ? undefined : value } })
   }
@@ -171,9 +176,15 @@ const bytes = new Intl.NumberFormat(undefined, {
     <UBreadcrumb :items="[{ label: 'Projects', to: '/' }, { label: `${org}/${slug}` }]" />
 
     <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-      <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance" translate="no">
-        {{ org }}/{{ slug }}
-      </h1>
+      <div class="min-w-0">
+        <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance" translate="no">
+          {{ renamed ? current?.name : `${org}/${slug}` }}
+        </h1>
+        <p v-if="renamed" class="font-mono text-sm text-muted" translate="no">
+          {{ org }}/{{ slug }}
+        </p>
+      </div>
+      <UBadge v-if="current?.archived" color="neutral" variant="subtle" label="Archived" />
       <UBadge
         v-if="myRole"
         :color="ROLE_COLOR[myRole]"
@@ -207,9 +218,24 @@ const bytes = new Intl.NumberFormat(undefined, {
     </EmptyState>
 
     <template v-else>
+      <UAlert
+        v-if="current.archived"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-archive"
+        title="This Project Is Archived"
+        description="Terraform can read its state, but writes, locks and changes are refused until an admin unarchives it."
+      />
+
       <UTabs v-model="tab" :items="tabItems" :content="false" class="w-full" />
 
       <VariablesPanel v-if="tab === 'variables'" :project-id="current.id" :role="myRole" />
+
+      <ProjectSettingsPanel
+        v-else-if="tab === 'settings'"
+        :project="current"
+        @changed="refreshProjects()"
+      />
 
       <MembersPanel
         v-else-if="tab === 'members'"

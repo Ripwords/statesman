@@ -62,7 +62,12 @@ async function status(call: Promise<unknown>): Promise<number | undefined> {
   }
 }
 
-const resolved = () => ({ id: projectId, orgId: '', ref: { org: ORG, project: 'p' } })
+const resolved = () => ({
+  id: projectId,
+  orgId: '',
+  ref: { org: ORG, project: 'p' },
+  archived: false
+})
 
 beforeAll(async () => {
   await resetDb(ORG)

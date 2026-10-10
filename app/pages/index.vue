@@ -10,6 +10,14 @@ const { data: projects, status, error, refresh } = await useFetch('/api/ui/proje
 
 const creating = ref(false)
 
+// Archived projects are hidden by default (project-settings spec §5). The
+// switch appears only when there is something for it to show.
+const showArchived = ref(false)
+const anyArchived = computed(() => projects.value?.some((p) => p.archived) ?? false)
+const visible = computed(() =>
+  (projects.value ?? []).filter((p) => showArchived.value || !p.archived)
+)
+
 // Creating a project is admin-only server-side; a member is offered no button
 // for it rather than a 403 after filling the form in.
 const { isAdmin } = useAuth()
@@ -35,10 +43,20 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
 const route = useRoute()
 const toast = useToast()
 onMounted(() => {
+  // The delete modal lands here with `?deleted=org/slug`; same say-once rule.
+  const deleted = typeof route.query.deleted === 'string' ? route.query.deleted : null
+  if (deleted) {
+    toast.add({
+      title: 'Project Deleted',
+      description: `${deleted} and its stored state are gone.`,
+      color: 'success',
+      icon: 'i-lucide-trash-2'
+    })
+  }
   const notice = githubNotice(route.query)
-  if (!notice) return
-  toast.add(notice)
-  const { github: _shown, ...rest } = route.query
+  if (notice) toast.add(notice)
+  if (!notice && !deleted) return
+  const { github: _shown, deleted: _gone, ...rest } = route.query
   void navigateTo({ query: rest }, { replace: true })
 })
 </script>
@@ -48,8 +66,9 @@ onMounted(() => {
     <div class="mb-6 flex items-center justify-between gap-4">
       <h1 class="scroll-mt-24 text-xl font-semibold tracking-tight text-balance">Projects</h1>
       <div class="flex items-center gap-3">
-        <UBadge v-if="projects?.length" color="neutral" variant="subtle" class="tabular">
-          {{ projects.length }}
+        <USwitch v-if="anyArchived" v-model="showArchived" label="Show archived" />
+        <UBadge v-if="visible.length" color="neutral" variant="subtle" class="tabular">
+          {{ visible.length }}
         </UBadge>
         <UButton
           v-if="projects?.length && isAdmin"
@@ -118,9 +137,13 @@ onMounted(() => {
       </div>
     </EmptyState>
 
+    <p v-else-if="!visible.length" class="text-sm text-muted">
+      Every project here is archived. Turn on <strong>Show archived</strong> to see them.
+    </p>
+
     <ul v-else class="grid gap-3">
       <li
-        v-for="p in projects"
+        v-for="p in visible"
         :key="p.id"
         class="[contain-intrinsic-size:auto_6rem] min-w-0 [content-visibility:auto]"
       >
@@ -129,9 +152,16 @@ onMounted(() => {
           class="block rounded-lg border border-default p-4 transition-[color,background-color,border-color] hover:border-primary hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span class="min-w-0 truncate font-medium" translate="no"
+            <span class="min-w-0 truncate font-medium" translate="no">{{
+              p.name === p.slug ? `${p.org}/${p.slug}` : p.name
+            }}</span>
+            <span
+              v-if="p.name !== p.slug"
+              class="min-w-0 truncate font-mono text-sm text-muted"
+              translate="no"
               >{{ p.org }}/{{ p.slug }}</span
             >
+            <UBadge v-if="p.archived" color="neutral" variant="subtle" label="Archived" />
             <!--
               Gated on lockedAt, not lockedBy: `Who` is optional in Terraform's
               LockInfo, so a client that omits it held a lock the dashboard
@@ -157,6 +187,10 @@ onMounted(() => {
               :label="`Locked by ${lockHolder(p)}`"
             />
           </div>
+
+          <p v-if="p.description" class="mt-1 line-clamp-2 text-sm text-muted text-pretty">
+            {{ p.description }}
+          </p>
 
           <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted tabular">
             <div class="flex min-w-0 gap-1.5">

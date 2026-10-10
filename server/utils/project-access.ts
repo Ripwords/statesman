@@ -245,6 +245,6 @@ export async function requireTokenAuthority(
       continue
     }
     if (!found || (await effectiveRole(principal, found.id)) !== 'owner') refuse()
-    if (found.archivedAt !== null) archived()
+    if (found?.archivedAt) archived()
   }
 }

@@ -25,7 +25,7 @@ export async function updateProject(input: {
     .update(project)
     .set(input.changes)
     .where(eq(project.id, input.projectId))
-    .returning({ orgId: project.orgId })
+    .returning()
   if (input.changes.name !== undefined) {
     await db()
       .update(projectAccess)
