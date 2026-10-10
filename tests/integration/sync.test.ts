@@ -6,7 +6,7 @@ import { generateKeyPairSync } from 'node:crypto'
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../../server/db/client'
-import { githubInstallation } from '../../server/db/schema'
+import { githubInstallation, project } from '../../server/db/schema'
 import { resetDb, seedProject } from '../protocol/helpers'
 import { GitHubClient } from '../../server/github/client'
 import { createHclToolkit, type HclToolkit } from '../../server/hcl/toolkit'
@@ -29,11 +29,12 @@ const ORG = 'sync-service'
 // Installation ids are global, so each suite picks its own range.
 const INSTALLATION = 9_100_001
 let envId: string
+let projectId: string
 
 beforeEach(async () => {
   await resetDb(ORG)
   await db().delete(githubInstallation).where(eq(githubInstallation.installationId, INSTALLATION))
-  const projectId = await seedProject(ORG, 'p')
+  projectId = await seedProject(ORG, 'p')
   envId = (await createEnvironment(projectId, 'dev')).id
   await recordInstallation(INSTALLATION, 'acme')
 })
@@ -241,6 +242,12 @@ describe('push routing', () => {
     await link()
     expect(await linksForPush(55, 'main')).toContain(envId)
     expect(await linksForPush(55, 'other')).not.toContain(envId)
+  })
+
+  it('skips links on an archived project, which is read-only', async () => {
+    await link()
+    await db().update(project).set({ archivedAt: new Date() }).where(eq(project.id, projectId))
+    expect(await linksForPush(55, 'main')).not.toContain(envId)
   })
 
   it('marks revoked repositories', async () => {

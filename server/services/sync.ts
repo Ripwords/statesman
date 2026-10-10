@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client'
-import { githubInstallation, repositoryLink } from '../db/schema'
+import { environment, githubInstallation, project, repositoryLink } from '../db/schema'
 import { GitHubError, type GitHubClient } from '../github/client'
 import { HclError, type HclToolkit } from '../hcl/toolkit'
 import type { DeclaredVariable } from '../../shared/schemas/variable'
@@ -190,11 +190,20 @@ export async function syncEnvironment(environmentId: string, deps: SyncDeps): Pr
   }
 }
 
+/** Archived projects are read-only, so a push does not re-sync them. */
 export async function linksForPush(repoId: number, ref: string): Promise<string[]> {
   const rows = await db()
     .select({ environmentId: repositoryLink.environmentId })
     .from(repositoryLink)
-    .where(and(eq(repositoryLink.repoId, repoId), eq(repositoryLink.ref, ref)))
+    .innerJoin(environment, eq(environment.id, repositoryLink.environmentId))
+    .innerJoin(project, eq(project.id, environment.projectId))
+    .where(
+      and(
+        eq(repositoryLink.repoId, repoId),
+        eq(repositoryLink.ref, ref),
+        isNull(project.archivedAt)
+      )
+    )
   return rows.map((r) => r.environmentId)
 }
 
