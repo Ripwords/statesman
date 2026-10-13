@@ -5,6 +5,7 @@ import { createHclToolkit, type HclToolkit } from '../../server/hcl/toolkit'
 import { isDrift, reportEnvironment } from '../../cli/src/report'
 import { mergeEnvFile, ownedEntries } from '../../cli/src/env-file'
 import type { Manifest } from '../../shared/schemas/manifest'
+import type { CheckoutResponse } from '../../shared/schemas/backend'
 
 let hcl: HclToolkit
 beforeAll(async () => {
@@ -17,7 +18,7 @@ const manifest: Manifest = {
   environments: ['client'],
   files: { vars: '{env}.tfvars', backend: 'backend.{env}.hcl', env: '.env.{env}' }
 }
-const checkout = { variables: { a: 1, secret: 'shh' }, backend: { bucket: 'b' } }
+const checkout: CheckoutResponse = { variables: { a: 1, secret: 'shh' }, backend: { bucket: 'b' } }
 const run = (files: Record<string, string>, c = checkout) =>
   reportEnvironment({ manifest, env: 'client', checkout: c, read: (f) => files[f] ?? null, hcl })
 
