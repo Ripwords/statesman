@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { JsonValue } from './variable'
 
 export const MAX_BACKEND_KEYS = 32
 
@@ -60,4 +61,10 @@ export function firstIssueMessage(error: z.ZodError): string {
     return `${key} must be a string, number or boolean`
   }
   return issue.message
+}
+
+/** Body of GET /api/checkout/:org/:project/:environment (checkout spec §4). */
+export type CheckoutResponse = {
+  variables: Record<string, JsonValue>
+  backend: BackendSettings | null
 }
