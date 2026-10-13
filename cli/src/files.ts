@@ -13,15 +13,16 @@ export function readOrNull(path: string): string | null {
   }
 }
 
-/**
- * Temp file in the same directory, then rename: never a half-written file.
- * An existing file keeps its permission bits; `mode` applies to new files.
- */
-export function writeAtomic(path: string, content: string, mode: number): void {
+/** `always`: the file gets this mode. `whenNew`: an existing file keeps its bits. */
+export type FileMode = { always: number } | { whenNew: number }
+
+/** Temp file in the same directory, then rename: never a half-written file. */
+export function writeAtomic(path: string, content: string, mode: FileMode): void {
   const temp = join(dirname(path), `.${basename(path)}.statesman-${process.pid}`)
   try {
-    const existing = statSync(path, { throwIfNoEntry: false })
-    const finalMode = existing ? existing.mode & 0o777 : mode
+    const existing = 'always' in mode ? undefined : statSync(path, { throwIfNoEntry: false })
+    const finalMode =
+      'always' in mode ? mode.always : existing ? existing.mode & 0o777 : mode.whenNew
     rmSync(temp, { force: true }) // removes a stale file or a planted symlink, never its target
     writeFileSync(temp, content, { mode: finalMode, flag: 'wx' })
     chmodSync(temp, finalMode)

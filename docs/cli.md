@@ -211,11 +211,13 @@ For environment `client` and the manifest above:
 
 | File | Content | Mode |
 |---|---|---|
-| `client.tfvars` | The environment's variables, sorted by name. JSON for a `.tfvars.json` pattern | `0600` when new |
+| `client.tfvars` | The environment's variables, sorted by name. JSON for a `.tfvars.json` pattern | `0600`, always |
 | `backend.client.hcl` | The environment's backend settings, sorted by name. Not written when it has none | `0644` when new |
 | `.env.client` | The owned keys below | `0644` when new |
 
-A file that already exists keeps its permission bits when it is rewritten. Each
+The vars file holds secrets, so it is always written `0600`, even when it
+replaces a looser file. A backend or `.env` file that already exists keeps its
+permission bits when it is rewritten. Each
 write goes to a temporary file in the same directory and is renamed into place,
 so an interrupted pull never leaves half a file.
 

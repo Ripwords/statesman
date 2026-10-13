@@ -292,3 +292,12 @@ describe('fix round 1', () => {
     expect(isDirectRun(join(dir, 'other.mjs'), metaUrl)).toBe(false)
   })
 })
+
+describe('final review fixes', () => {
+  it('writes a vars file 0600 even when it overwrites a 0644 file', async () => {
+    writeFileSync(join(dir, 'client.tfvars'), 'a = 99\n')
+    chmodSync(join(dir, 'client.tfvars'), 0o644)
+    expect((await pull({ ...opts(), force: true })).exitCode).toBe(0)
+    expect(statSync(join(dir, 'client.tfvars')).mode & 0o777).toBe(0o600)
+  })
+})

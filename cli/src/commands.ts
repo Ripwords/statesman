@@ -104,7 +104,9 @@ export async function pull(opts: RunOptions & { force: boolean }): Promise<Comma
     // A file that differs is only overwritten with --force; .env merges keep foreign lines.
     const mayWrite = r.state === 'missing' || opts.force
     if (!mayWrite) return { ...r, action: 'refused' }
-    writeAtomic(join(opts.dir, r.file), r.desired, r.kind === 'vars' ? 0o600 : 0o644)
+    // Vars files hold secrets: always 0600, even over a looser existing file.
+    const mode = r.kind === 'vars' ? { always: 0o600 } : { whenNew: 0o644 }
+    writeAtomic(join(opts.dir, r.file), r.desired, mode)
     return { ...r, action: 'written' }
   })
   const drift = out.some((r) => r.action === 'refused' || r.state === 'stray')
