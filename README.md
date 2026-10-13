@@ -163,6 +163,40 @@ GitHub App that you register for your own deployment. Without one the tab shows
 no repository panel at all. [docs/github-app.md](docs/github-app.md) walks
 through registering it, connecting it and fixing a failed sync.
 
+### Backend settings
+
+Also optional. An environment can store the settings of its Terraform backend
+(`bucket`, `region`, `key` and the like) so that `statesman pull` writes them to
+a backend config file. On the Variables tab, above the variables table, **Add
+backend settings** (**Edit** once there are some) opens a box where you paste a
+backend config file, one `name = value` per line. Owners and admins can edit
+them; everyone with a role on the project can read them. The values are
+**not encrypted** and are shown in full, so names that look like credentials
+(`access_key`, `secret_key`, `token`, `password`, or ending in `_secret`,
+`_token` or `_password`) are refused. Credentials stay in your provider's own
+chain, or in `TF_HTTP_PASSWORD` for statesman's backend. Only flat settings are
+supported; a nested block such as `assume_role { ... }` stays in your committed
+`backend` block.
+
+## Setting up a machine
+
+A Terraform root applied to several accounts needs gitignored files per account:
+a variable file, a backend config file and a shell file that selects them. The
+`statesman` CLI writes them from what statesman stores. Commit a
+`statesman.json` that names the project, its environments and the file
+patterns, set `STATESMAN_TOKEN` to a token with **Read Variables**, then:
+
+```bash
+statesman status   # which files are missing, different or stray; writes nothing
+statesman pull     # writes the missing ones; refuses to overwrite a changed one
+```
+
+`pull --force` overwrites a file that differs, so check `status` first. Exit
+codes are 0 (current), 1 (drift) and 2 (could not check), so `status` can gate
+CI. The CLI is built from this repository with `pnpm build:cli` and is not on
+npm yet. The manifest, every flag, the CI recipe and the error messages are in
+[docs/cli.md](docs/cli.md).
+
 ## Project settings
 
 Each project has a **Settings** tab. Everyone with a role on the project can
@@ -219,6 +253,7 @@ project is absent from its list and its address answers 404.
 | Sync a linked repository                                | no     | yes    | yes   | yes              |
 | Force unlock                                            | no     | yes    | yes   | yes              |
 | Create, delete environments                             | no     | no     | yes   | yes              |
+| Edit backend settings                                   | no     | no     | yes   | yes              |
 | Link / unlink a repository                              | no     | no     | yes   | yes              |
 | Roll back                                               | no     | no     | yes   | yes              |
 | Add, remove members, change their roles                 | no     | no     | yes   | yes              |

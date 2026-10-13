@@ -1,5 +1,7 @@
 # statesman variables — Design Spec
 
+> **2026-10-13:** environments gained backend settings and a checkout endpoint; see [2026-10-13-checkout-cli-design.md](2026-10-13-checkout-cli-design.md).
+
 **Date:** 2026-10-09
 **Status:** Implemented. Plan: `docs/superpowers/plans/2026-10-09-variables.md`.
 

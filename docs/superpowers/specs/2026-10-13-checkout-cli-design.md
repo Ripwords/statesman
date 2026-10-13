@@ -1,7 +1,7 @@
 # statesman checkout CLI — Design Spec
 
 **Date:** 2026-10-13
-**Status:** Draft, awaiting review.
+**Status:** Implemented. Plan: docs/superpowers/plans/2026-10-13-checkout-cli.md.
 
 A command-line tool that writes the gitignored Terraform files a checkout needs
 (variable files, backend configuration, per-environment shell settings) from

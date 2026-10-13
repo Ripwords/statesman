@@ -65,6 +65,17 @@ exactly how the acceptance suite in `tests/e2e/` drives the real CLI.
 
 ---
 
+## Using another backend
+
+A project does not have to use statesman's `http` backend to use statesman for
+its checkout files. A project on `s3`, or any other backend, can store that
+backend's settings (bucket, region, key and so on) on each environment, and
+`statesman pull` writes them to a backend config file that `terraform init`
+reads through `-backend-config`. Settings are flat and unencrypted, and
+credential-like names are refused. See [the CLI reference](cli.md).
+
+---
+
 ## Accounts
 
 There is no public sign-up. `POST /api/auth/sign-up/email` is refused, and
