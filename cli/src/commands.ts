@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileFor, parseManifest, type Manifest } from '../../shared/schemas/manifest'
 import { CliError } from './errors'
-import { fetchCheckout } from './client'
+import { checkServer, fetchCheckout } from './client'
 import { gitIgnored, gitTracked } from './git'
 import { readOrNull, writeAtomic } from './files'
 import { loadHcl } from './wasm'
@@ -50,6 +50,7 @@ async function collect(opts: RunOptions): Promise<{ manifest: Manifest; reports:
       `set STATESMAN_TOKEN to a token with Read Variables for ${manifest.project}`,
       2
     )
+  if (opts.serverOverride !== undefined) checkServer(opts.serverOverride, 'STATESMAN_URL')
   const server = opts.serverOverride ?? manifest.server
   const checkouts = await Promise.all(
     envs.map((env) =>
@@ -100,8 +101,8 @@ export async function pull(opts: RunOptions & { force: boolean }): Promise<Comma
   const { reports } = await collect(opts)
   const out: Reported[] = reports.map((r) => {
     if (r.desired === null || r.state === 'ok') return r
-    // .env lines the CLI owns are always rewritten; every other line survives.
-    const mayWrite = r.state === 'missing' || r.kind === 'env' || opts.force
+    // A file that differs is only overwritten with --force; .env merges keep foreign lines.
+    const mayWrite = r.state === 'missing' || opts.force
     if (!mayWrite) return { ...r, action: 'refused' }
     writeAtomic(join(opts.dir, r.file), r.desired, r.kind === 'vars' ? 0o600 : 0o644)
     return { ...r, action: 'written' }

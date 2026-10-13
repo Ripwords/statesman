@@ -1,6 +1,8 @@
 /* eslint-disable no-console -- this file is the terminal output of the CLI */
 import { parseArgs } from 'node:util'
+import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { CliError } from './errors'
 import { pull, status, type CommandResult } from './commands'
 import { formatJson, formatText } from './output'
@@ -61,7 +63,17 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
   }
 }
 
+/** True when this module is the entry point, also when started through a symlink. */
+export function isDirectRun(argv1: string | undefined, metaUrl: string): boolean {
+  if (!argv1) return false
+  try {
+    return pathToFileURL(realpathSync(argv1)).href === metaUrl
+  } catch {
+    return false
+  }
+}
+
 // Run when executed directly (bundled or via tsx), not when imported by tests.
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (isDirectRun(process.argv[1], import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2), process.env)
 }

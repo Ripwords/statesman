@@ -44,6 +44,16 @@ describe('fetchCheckout', () => {
     expect(e.message).toMatch(message)
   })
 
+  it('passes an abort signal so a stalled server ends the run', async () => {
+    let signal: AbortSignal | null | undefined
+    const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal
+      return new Response(JSON.stringify({ variables: {}, backend: null }))
+    }) as typeof fetch
+    await fetchCheckout({ ...args, fetchImpl })
+    expect(signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('maps a network failure to exit 2 naming the server', async () => {
     const e = await failure((async () => {
       throw new TypeError('fetch failed')

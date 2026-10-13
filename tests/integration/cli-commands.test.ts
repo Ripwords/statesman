@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import {
+  chmodSync,
+  symlinkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -11,9 +14,11 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { pull, status } from '../../cli/src/commands'
 import { readOrNull } from '../../cli/src/files'
-import { main } from '../../cli/src/main'
+import { isDirectRun, main } from '../../cli/src/main'
+import { formatJson, formatText } from '../../cli/src/output'
 
 const MANIFEST = {
   server: 'https://s.example.com',
@@ -50,10 +55,18 @@ describe('pull and status outside git', () => {
   it('pull writes six files, the vars files 0600; status is then clean', async () => {
     const result = await pull({ ...opts(), force: false })
     expect(result.exitCode).toBe(0)
-    for (const f of ['internal.tfvars', 'client.tfvars', 'backend.client.hcl', '.env.client']) {
+    for (const f of [
+      'internal.tfvars',
+      'client.tfvars',
+      'backend.internal.hcl',
+      'backend.client.hcl',
+      '.env.internal',
+      '.env.client'
+    ]) {
       expect(existsSync(join(dir, f))).toBe(true)
     }
     expect(statSync(join(dir, 'client.tfvars')).mode & 0o777).toBe(0o600)
+    expect(statSync(join(dir, 'internal.tfvars')).mode & 0o777).toBe(0o600)
     expect((await status(opts())).exitCode).toBe(0)
   })
 
@@ -72,10 +85,16 @@ describe('pull and status outside git', () => {
     expect(readFileSync(join(dir, 'client.tfvars'), 'utf8')).toContain('secret = "shh"')
   })
 
-  it('always merges .env files and keeps foreign lines, without --force', async () => {
+  it('refuses a differing .env file without --force and merges it with --force', async () => {
     writeFileSync(join(dir, '.env.client'), 'AWS_PROFILE=client\nTF_DATA_DIR=.terraform\n')
-    const result = await pull({ ...opts(), force: false })
-    expect(result.exitCode).toBe(0)
+    const refused = await pull({ ...opts(), force: false })
+    expect(refused.exitCode).toBe(1)
+    expect(refused.reports.find((r) => r.file === '.env.client')).toMatchObject({
+      action: 'refused'
+    })
+    expect(readFileSync(join(dir, '.env.client'), 'utf8')).toContain('TF_DATA_DIR=.terraform\n')
+    const forced = await pull({ ...opts(), force: true })
+    expect(forced.exitCode).toBe(0)
     const text = readFileSync(join(dir, '.env.client'), 'utf8')
     expect(text).toContain('AWS_PROFILE=client\nTF_DATA_DIR=.terraform-client\n')
   })
@@ -169,5 +188,107 @@ describe('main', () => {
     expect(errors).toHaveLength(1)
     expect(typeof errors[0]).toBe('string')
     expect(String(errors[0])).not.toContain('\n    at ')
+  })
+})
+
+describe('fix round 1', () => {
+  const urls: string[] = []
+  const recordingFetch = (async (input: RequestInfo | URL) => {
+    urls.push(String(input))
+    return fakeFetch(input)
+  }) as typeof fetch
+  beforeEach(() => {
+    urls.length = 0
+  })
+
+  it('keeps the permission bits of an existing file', async () => {
+    writeFileSync(join(dir, '.env.client'), 'AWS_PROFILE=client\n', { mode: 0o600 })
+    chmodSync(join(dir, '.env.client'), 0o600)
+    await pull({ ...opts(), force: true })
+    expect(statSync(join(dir, '.env.client')).mode & 0o777).toBe(0o600)
+    expect(statSync(join(dir, 'backend.client.hcl')).mode & 0o777).toBe(0o644)
+  })
+
+  it('never puts a variable value in the text or json output', async () => {
+    const result = await pull({ ...opts(), force: false })
+    expect(result.reports.some((r) => r.desired?.includes('shh'))).toBe(true)
+    expect(formatText(result)).not.toContain('shh')
+    expect(formatJson(result)).not.toContain('shh')
+    const lines: string[] = []
+    const original = console.log
+    console.log = (m: string) => lines.push(m)
+    try {
+      await main(['status', '--dir', dir, '--json'], { STATESMAN_TOKEN: 't' }).catch(() => 2)
+    } finally {
+      console.log = original
+    }
+    expect(lines.join('\n')).not.toContain('shh')
+  })
+
+  it('exits 2 and writes nothing when one environment cannot be fetched', async () => {
+    const half = (async (input: RequestInfo | URL) =>
+      String(input).endsWith('/client')
+        ? new Response('{}', { status: 500 })
+        : fakeFetch(input)) as typeof fetch
+    await expect(pull({ ...opts({ fetchImpl: half }), force: false })).rejects.toMatchObject({
+      exitCode: 2
+    })
+    expect(existsSync(join(dir, 'internal.tfvars'))).toBe(false)
+  })
+
+  it('STATESMAN_URL overrides the manifest server and keeps a path prefix', async () => {
+    await status(opts({ fetchImpl: recordingFetch, serverOverride: 'https://o.example.com/base/' }))
+    expect(urls).toContain('https://o.example.com/base/api/checkout/acme/p/client')
+    expect(urls.every((u) => u.startsWith('https://o.example.com/base/'))).toBe(true)
+  })
+
+  it.each(['ftp://o.example.com', 'https://user:pw@o.example.com', 'not a url'])(
+    'rejects STATESMAN_URL %s without echoing it',
+    async (value) => {
+      const e = await status(opts({ serverOverride: value })).catch((x: unknown) => x)
+      expect(e).toMatchObject({ exitCode: 2, message: expect.stringContaining('STATESMAN_URL') })
+      expect(String((e as Error).message)).not.toContain('pw')
+      expect(String((e as Error).message)).not.toContain(value)
+    }
+  )
+
+  it('turns a failing write into an exit-2 error naming the file', async () => {
+    chmodSync(dir, 0o500)
+    try {
+      const e = await pull({ ...opts(), force: false }).catch((x: unknown) => x)
+      expect(e).toMatchObject({ exitCode: 2 })
+      expect(String((e as Error).message)).toMatch(/tfvars: cannot write \(EACCES\)/)
+    } finally {
+      chmodSync(dir, 0o700)
+    }
+  })
+
+  it('does not follow a symlink planted at the temp path', async () => {
+    const target = join(dir, 'victim')
+    writeFileSync(target, 'keep')
+    symlinkSync(target, join(dir, `.backend.client.hcl.statesman-${process.pid}`))
+    await pull({ ...opts({ envs: ['client'] }), force: false })
+    expect(readFileSync(target, 'utf8')).toBe('keep')
+    expect(existsSync(join(dir, 'backend.client.hcl'))).toBe(true)
+  })
+
+  it('stops with exit 2 when git itself fails, writing nothing', async () => {
+    writeFileSync(join(dir, '.git'), 'garbage')
+    await expect(pull({ ...opts(), force: false })).rejects.toMatchObject({
+      exitCode: 2,
+      message: expect.stringContaining('git') as unknown as string
+    })
+    expect(existsSync(join(dir, 'client.tfvars'))).toBe(false)
+  })
+
+  it('isDirectRun follows a symlink to the module', () => {
+    const real = join(dir, 'real.mjs')
+    writeFileSync(real, '')
+    const link = join(dir, 'link.mjs')
+    symlinkSync(real, link)
+    const metaUrl = pathToFileURL(realpathSync(real)).href
+    expect(isDirectRun(link, metaUrl)).toBe(true)
+    expect(isDirectRun(undefined, metaUrl)).toBe(false)
+    expect(isDirectRun(join(dir, 'other.mjs'), metaUrl)).toBe(false)
   })
 })

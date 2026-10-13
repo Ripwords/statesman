@@ -8,6 +8,22 @@ const responseSchema = z.object({
   backend: backendSettingsSchema.nullable()
 })
 
+const TIMEOUT_MS = 30_000
+
+/** A usable statesman base URL: http(s), no credentials. Errors never echo the value. */
+export function checkServer(server: string, label: string): URL {
+  let url: URL
+  try {
+    url = new URL(server)
+  } catch {
+    throw new CliError(`${label} must be an http(s) URL`, 2)
+  }
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) {
+    throw new CliError(`${label} must be an http(s) URL without credentials`, 2)
+  }
+  return url
+}
+
 export async function fetchCheckout(args: {
   server: string
   project: string
@@ -16,14 +32,17 @@ export async function fetchCheckout(args: {
   fetchImpl?: typeof fetch
 }): Promise<CheckoutResponse> {
   const { server, project, env, token, fetchImpl = fetch } = args
-  const url = new URL(`/api/checkout/${project}/${env}`, server).toString()
+  const base = checkServer(server, 'server in statesman.json')
+  const prefix = base.pathname.replace(/\/+$/, '')
+  const url = `${base.origin}${prefix}/api/checkout/${project}/${env}`
   let response: Response
   try {
     response = await fetchImpl(url, {
-      headers: { authorization: `Basic ${Buffer.from(`statesman:${token}`).toString('base64')}` }
+      headers: { authorization: `Basic ${Buffer.from(`statesman:${token}`).toString('base64')}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS)
     })
   } catch {
-    throw new CliError(`could not reach statesman at ${server}`, 2)
+    throw new CliError(`could not reach statesman at ${base.origin}`, 2)
   }
   if (response.status === 401)
     throw new CliError('statesman rejected STATESMAN_TOKEN (expired, revoked or mistyped)', 2)
