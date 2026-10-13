@@ -62,6 +62,24 @@ describe('fetchCheckout', () => {
     expect(e.message).toContain('https://s.example.com')
   })
 
+  it('parses stored backend settings leniently, even names the write policy now refuses', async () => {
+    // Write-time policy can tighten after data is stored; a pull must still read it.
+    const backend = {
+      bucket: 'b',
+      access_key: 'stored-earlier',
+      credentials: 'x',
+      max_retries: 3,
+      encrypt: true
+    }
+    const fetchImpl = respond(200, { variables: {}, backend })
+    expect(await fetchCheckout({ ...args, fetchImpl })).toEqual({ variables: {}, backend })
+  })
+
+  it('still refuses a backend map with a nested value', async () => {
+    const e = await failure(respond(200, { variables: {}, backend: { assume_role: { a: 1 } } }))
+    expect(e.exitCode).toBe(2)
+  })
+
   it('refuses a body that is not a checkout response without echoing it', async () => {
     const e = await failure(respond(200, { nope: 'leaky-body' }))
     expect(e.exitCode).toBe(2)

@@ -1,11 +1,13 @@
 import { z } from 'zod'
-import { backendSettingsSchema, type CheckoutResponse } from '../../shared/schemas/backend'
+import type { CheckoutResponse } from '../../shared/schemas/backend'
 import { variableValueSchema } from '../../shared/schemas/variable'
 import { CliError } from './errors'
 
+// Shape only, not the write-time policy in backendSettingsSchema: that policy
+// can tighten after settings are stored, and a pull must still read them.
 const responseSchema = z.object({
   variables: z.record(z.string(), variableValueSchema),
-  backend: backendSettingsSchema.nullable()
+  backend: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).nullable()
 })
 
 const TIMEOUT_MS = 30_000
