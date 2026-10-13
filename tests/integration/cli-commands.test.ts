@@ -146,6 +146,18 @@ describe('inside git', () => {
     expect(existsSync(join(dir, 'backend.client.hcl'))).toBe(false)
   })
 
+  it('tells the user to untrack a vars file that is gitignored but already tracked', async () => {
+    writeFileSync(join(dir, '.gitignore'), '*.tfvars\n')
+    writeFileSync(join(dir, 'client.tfvars'), 'a = 2\n')
+    execFileSync('git', ['add', '-f', 'client.tfvars'], { cwd: dir })
+    const e = await pull({ ...opts(), force: false }).catch((x: unknown) => x)
+    expect(e).toMatchObject({ exitCode: 2 })
+    const message = String((e as Error).message)
+    expect(message).toContain('git rm --cached client.tfvars')
+    expect(message).not.toContain('add it to .gitignore')
+    expect(existsSync(join(dir, 'backend.client.hcl'))).toBe(false)
+  })
+
   it('writes once the vars files are ignored, and a tracked .env.example is not stray', async () => {
     writeFileSync(join(dir, '.gitignore'), '*.tfvars\n')
     writeFileSync(join(dir, '.env.example'), 'X=1\n')

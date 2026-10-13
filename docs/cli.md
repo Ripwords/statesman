@@ -176,7 +176,10 @@ with `written`, `updated: <names>` or `refused, differs: <names> (use --force
 after checking)`.
 
 Before it contacts the server, `pull` checks that each vars file is gitignored
-(`git check-ignore`). If one is not, it stops with exit 2 and writes nothing.
+(`git check-ignore`) and not already tracked. If one is not, it stops with exit
+2 and writes nothing. A vars file that was committed before it was ignored is
+still tracked, and git commits changes to it whatever `.gitignore` says:
+untrack it with `git rm --cached <file>`.
 The check is skipped when the directory is not in a git repository. It fetches
 every environment before it writes any file, so a failure on one environment
 leaves the others untouched.
@@ -325,6 +328,7 @@ unless noted.
 | `statesman answered <status> for <org/project>/<slug>` | A 5xx or other unexpected status. Retry, then check the server's logs |
 | `statesman sent an unexpected response for <org/project>/<slug>` | The server and CLI versions disagree. Rebuild the CLI from the same revision |
 | `<file> is not gitignored and would be committed; add it to .gitignore first` | Add the vars file to `.gitignore`, then pull again |
+| ``<file> is tracked by git and would be committed; untrack it with `git rm --cached <file>` and make sure .gitignore covers it`` | Run `git rm --cached <file>`, check `.gitignore` covers it, commit, then pull again |
 | `git failed (exit <code>); fix the repository and retry` | Git is installed but the repository is broken. `pull` stops before it writes secrets |
 | `git check-ignore failed (exit <code>)` / `git ls-files failed (exit <code>)` | As above |
 | `<file>: cannot read (<code>)` | A file exists but cannot be read, for example a permission error (`EACCES`) |

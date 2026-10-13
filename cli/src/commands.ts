@@ -92,6 +92,14 @@ export async function pull(opts: RunOptions & { force: boolean }): Promise<Comma
   for (const env of selectEnvs(manifest, opts.envs)) {
     const file = fileFor(manifest.files.vars, env)
     if ((await gitIgnored(opts.dir, file)) === false) {
+      // check-ignore reports a tracked file as not ignored whatever .gitignore says.
+      if ((await gitTracked(opts.dir)).has(file)) {
+        throw new CliError(
+          `${file} is tracked by git and would be committed; untrack it with ` +
+            `\`git rm --cached ${file}\` and make sure .gitignore covers it`,
+          2
+        )
+      }
       throw new CliError(
         `${file} is not gitignored and would be committed; add it to .gitignore first`,
         2
