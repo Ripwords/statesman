@@ -227,6 +227,14 @@ const curl = computed(() =>
         @changed="refreshVariables()"
       />
 
+      <BackendSettingsPanel
+        v-if="env"
+        :environment-id="env.id"
+        :backend="env.backend"
+        :role="role"
+        @changed="refreshEnvironments()"
+      />
+
       <UAlert
         v-if="variablesError"
         color="error"
