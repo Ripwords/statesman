@@ -12,6 +12,7 @@ const TABLE: Array<[ProjectPermission, boolean, boolean, boolean]> = [
   ['project:unlock', false, true, true],
   ['environment:sync', false, true, true],
   ['variable:write', false, true, true],
+  ['environment:configure', false, false, true],
   ['environment:create', false, false, true],
   ['environment:delete', false, false, true],
   ['environment:link', false, false, true],

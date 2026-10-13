@@ -17,7 +17,7 @@ import type { TokenScope } from '../../shared/schemas/token'
  */
 export const projectStatements = {
   project: ['read', 'update', 'rollback', 'unlock'],
-  environment: ['create', 'delete', 'link', 'sync'],
+  environment: ['configure', 'create', 'delete', 'link', 'sync'],
   variable: ['write', 'download'],
   member: ['manage'],
   token: ['create']
@@ -34,7 +34,7 @@ export const projectRoles = {
   }),
   owner: projectAc.newRole({
     project: ['read', 'update', 'rollback', 'unlock'],
-    environment: ['create', 'delete', 'link', 'sync'],
+    environment: ['configure', 'create', 'delete', 'link', 'sync'],
     variable: ['write', 'download'],
     member: ['manage'],
     token: ['create']
@@ -49,6 +49,7 @@ const REQUESTS = {
   'project:update': { project: ['update'] },
   'project:rollback': { project: ['rollback'] },
   'project:unlock': { project: ['unlock'] },
+  'environment:configure': { environment: ['configure'] },
   'environment:create': { environment: ['create'] },
   'environment:delete': { environment: ['delete'] },
   'environment:link': { environment: ['link'] },

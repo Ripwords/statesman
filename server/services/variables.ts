@@ -2,6 +2,7 @@ import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import { db } from '../db/client'
 import { environment, project, user, variable } from '../db/schema'
+import type { BackendSettings } from '../../shared/schemas/backend'
 import { env } from '../utils/env'
 import { open, seal } from '../utils/crypto'
 import {
@@ -64,12 +65,27 @@ export async function findEnvironment(
 
 export async function listEnvironments(
   projectId: string
-): Promise<Array<{ id: string; slug: string }>> {
+): Promise<Array<{ id: string; slug: string; backend: BackendSettings | null }>> {
   return db()
-    .select({ id: environment.id, slug: environment.slug })
+    .select({ id: environment.id, slug: environment.slug, backend: environment.backend })
     .from(environment)
     .where(eq(environment.projectId, projectId))
     .orderBy(asc(environment.slug))
+}
+
+export async function setBackend(
+  environmentId: string,
+  backend: BackendSettings | null
+): Promise<void> {
+  await db().update(environment).set({ backend }).where(eq(environment.id, environmentId))
+}
+
+export async function readBackend(environmentId: string): Promise<BackendSettings | null> {
+  const rows = await db()
+    .select({ backend: environment.backend })
+    .from(environment)
+    .where(eq(environment.id, environmentId))
+  return rows[0]?.backend ?? null
 }
 
 export async function createEnvironment(
@@ -209,7 +225,7 @@ export async function deleteVariable(environmentId: string, name: string): Promi
   return deleted.length > 0
 }
 
-/** The only function that decrypts sensitive values. Its one caller is the token door. */
+/** The only function that decrypts sensitive values. Its callers are the token doors: /api/vars and /api/checkout. */
 export async function readDeliveryValues(
   environmentId: string
 ): Promise<Record<string, JsonValue>> {

@@ -1,3 +1,4 @@
+import type { BackendSettings } from '../../shared/schemas/backend'
 import type { DeclaredVariable } from '../../shared/schemas/variable'
 import {
   pgTable,
@@ -277,6 +278,8 @@ export const environment = pgTable(
       .notNull()
       .references(() => project.id, { onDelete: 'cascade' }),
     slug: text('slug').notNull(),
+    // Non-secret, shown in full (checkout spec §3). Null: no backend file.
+    backend: jsonb('backend').$type<BackendSettings>(),
     createdAt: timestamp('created_at').notNull().defaultNow()
   },
   (t) => [uniqueIndex('environment_project_slug_uq').on(t.projectId, t.slug)]

@@ -5,6 +5,7 @@ export type ProjectPermission =
   | 'project:update'
   | 'project:rollback'
   | 'project:unlock'
+  | 'environment:configure'
   | 'environment:create'
   | 'environment:delete'
   | 'environment:link'
@@ -24,6 +25,7 @@ export const MIN_ROLE: Record<ProjectPermission, ProjectRole> = {
   'variable:write': 'editor',
   'project:update': 'owner',
   'project:rollback': 'owner',
+  'environment:configure': 'owner',
   'environment:create': 'owner',
   'environment:delete': 'owner',
   'environment:link': 'owner',

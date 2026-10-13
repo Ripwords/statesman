@@ -40,6 +40,7 @@ import githubStatus from '../../server/api/ui/github.get'
 import listRepos from '../../server/api/ui/github/installations/[id]/repositories.get'
 import putLink from '../../server/api/ui/environments/[id]/link.put'
 import deleteLink from '../../server/api/ui/environments/[id]/link.delete'
+import putBackend from '../../server/api/ui/environments/[id]/backend.put'
 import syncNow from '../../server/api/ui/environments/[id]/sync.post'
 import rollback from '../../server/api/admin/rollback.post'
 import retention from '../../server/api/admin/retention.post'
@@ -239,6 +240,12 @@ const ROUTES: Array<[string, Call, Record<Actor, Outcome>]> = [
   [
     'DELETE /api/ui/environments/:id/link',
     (h, i) => deleteLink(testEvent({ headers: h, params: { id: i.envId } })),
+    OWN
+  ],
+  [
+    'PUT /api/ui/environments/:id/backend',
+    (h, i) =>
+      putBackend(testEvent({ headers: h, params: { id: i.envId }, body: { backend: null } })),
     OWN
   ],
   [
