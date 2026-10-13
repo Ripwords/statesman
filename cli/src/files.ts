@@ -1,4 +1,12 @@
-import { chmodSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { CliError } from './errors'
 
@@ -16,9 +24,29 @@ export function readOrNull(path: string): string | null {
 /** `always`: the file gets this mode. `whenNew`: an existing file keeps its bits. */
 export type FileMode = { always: number } | { whenNew: number }
 
+const tempPrefix = (name: string) => `.${name}.statesman-`
+
+/**
+ * Removes the temp files a crashed write left beside `names` in `dir`. Nothing
+ * else: only `.<name>.statesman-<pid>` for a name the CLI manages.
+ */
+export function removeStaleTemps(dir: string, names: string[]): void {
+  const prefixes = names.map(tempPrefix)
+  for (const entry of readdirSync(dir)) {
+    const prefix = prefixes.find((p) => entry.startsWith(p))
+    if (prefix === undefined || !/^\d+$/.test(entry.slice(prefix.length))) continue
+    try {
+      rmSync(join(dir, entry), { force: true })
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      throw new CliError(`${entry}: cannot remove (${code ?? 'unknown error'})`, 2)
+    }
+  }
+}
+
 /** Temp file in the same directory, then rename: never a half-written file. */
 export function writeAtomic(path: string, content: string, mode: FileMode): void {
-  const temp = join(dirname(path), `.${basename(path)}.statesman-${process.pid}`)
+  const temp = join(dirname(path), `${tempPrefix(basename(path))}${process.pid}`)
   try {
     const existing = 'always' in mode ? undefined : statSync(path, { throwIfNoEntry: false })
     const finalMode =

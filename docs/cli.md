@@ -222,7 +222,10 @@ The vars file holds secrets, so it is always written `0600`, even when it
 replaces a looser file. A backend or `.env` file that already exists keeps its
 permission bits when it is rewritten. Each
 write goes to a temporary file in the same directory and is renamed into place,
-so an interrupted pull never leaves half a file.
+so an interrupted pull never leaves half a file. If a pull dies between the
+write and the rename, the temporary file (`.<file>.statesman-<pid>`, for
+example `.client.tfvars.statesman-4242`) is left behind; the next `pull` deletes
+any such file for the files it manages before it writes.
 
 **The `.env` file.** The CLI owns these keys:
 

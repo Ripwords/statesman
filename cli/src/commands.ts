@@ -4,7 +4,7 @@ import { fileFor, parseManifest, type Manifest } from '../../shared/schemas/mani
 import { CliError } from './errors'
 import { checkServer, fetchCheckout } from './client'
 import { gitIgnored, gitTracked } from './git'
-import { readOrNull, writeAtomic } from './files'
+import { readOrNull, removeStaleTemps, writeAtomic } from './files'
 import { loadHcl } from './wasm'
 import { findStrays } from './strays'
 import { isDrift, reportEnvironment, type FileReport } from './report'
@@ -98,6 +98,15 @@ export async function pull(opts: RunOptions & { force: boolean }): Promise<Comma
       )
     }
   }
+  // A pull that crashed between write and rename left a temp copy that no
+  // *.tfvars ignore rule matches. Clear them before writing anything new.
+  const managed = selectEnvs(manifest, opts.envs).flatMap((env) =>
+    (['vars', 'backend', 'env'] as const).flatMap((kind) => {
+      const pattern = manifest.files[kind]
+      return pattern === undefined ? [] : [fileFor(pattern, env)]
+    })
+  )
+  removeStaleTemps(opts.dir, managed)
   const { reports } = await collect(opts)
   const out: Reported[] = reports.map((r) => {
     if (r.desired === null || r.state === 'ok') return r

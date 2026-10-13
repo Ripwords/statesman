@@ -300,4 +300,18 @@ describe('final review fixes', () => {
     expect((await pull({ ...opts(), force: true })).exitCode).toBe(0)
     expect(statSync(join(dir, 'client.tfvars')).mode & 0o777).toBe(0o600)
   })
+
+  it('pull removes temp files a crashed pull left behind, and nothing else', async () => {
+    const stale = [
+      '.client.tfvars.statesman-99999',
+      '.backend.internal.hcl.statesman-1',
+      '..env.client.statesman-42'
+    ]
+    for (const f of stale) writeFileSync(join(dir, f), 'secret = "shh"\n')
+    const kept = ['.notes.statesman-1', '.client.tfvars.statesman-x', '.client.tfvars.bak']
+    for (const f of kept) writeFileSync(join(dir, f), 'keep')
+    expect((await pull({ ...opts(), force: false })).exitCode).toBe(0)
+    for (const f of stale) expect(existsSync(join(dir, f))).toBe(false)
+    for (const f of kept) expect(existsSync(join(dir, f))).toBe(true)
+  })
 })
