@@ -3,6 +3,10 @@
 **Date:** 2026-10-13
 **Status:** Implemented. Plan: docs/superpowers/plans/2026-10-13-checkout-cli.md.
 
+> **Note (2026-10-13):** the CLI shipped inside the root package, built by
+> `pnpm build:cli` to `cli/dist`, not as a separate workspace package, and it is
+> not on npm yet. §9 describes the original intent.
+
 A command-line tool that writes the gitignored Terraform files a checkout needs
 (variable files, backend configuration, per-environment shell settings) from
 what statesman stores, and reports which of them are missing or out of date.
