@@ -68,4 +68,12 @@ describe('diffMaps', () => {
   it('treats 1 and "1" as different', () => {
     expect(diffMaps({ a: 1 }, { a: '1' }).changed).toEqual(['a'])
   })
+  it('does not treat inherited names such as constructor as present', () => {
+    expect(diffMaps({ a: 1 }, { a: 1, constructor: 'x' })).toEqual({
+      onlyInStatesman: [],
+      onlyLocal: ['constructor'],
+      changed: []
+    })
+    expect(diffMaps({ toString: 'x' }, {}).onlyInStatesman).toEqual(['toString'])
+  })
 })

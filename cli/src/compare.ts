@@ -47,13 +47,13 @@ export function diffMaps(
   actual: Record<string, unknown>
 ): MapDiff {
   const onlyInStatesman = Object.keys(expected)
-    .filter((k) => !(k in actual))
+    .filter((k) => !Object.hasOwn(actual, k))
     .toSorted()
   const onlyLocal = Object.keys(actual)
-    .filter((k) => !(k in expected))
+    .filter((k) => !Object.hasOwn(expected, k))
     .toSorted()
   const changed = Object.keys(expected)
-    .filter((k) => k in actual && !isDeepStrictEqual(expected[k], actual[k]))
+    .filter((k) => Object.hasOwn(actual, k) && !isDeepStrictEqual(expected[k], actual[k]))
     .toSorted()
   return { onlyInStatesman, onlyLocal, changed }
 }
