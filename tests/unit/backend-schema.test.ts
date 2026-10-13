@@ -30,6 +30,14 @@ describe('backendSettingsSchema', () => {
     expect(message).toContain('unencrypted')
   })
 
+  it.each([{ role_arn: 'x' }, ['a'], null])('names the key for a non-scalar value %j', (value) => {
+    const r = parse({ assume_role: value })
+    expect(r.success).toBe(false)
+    expect(r.success ? '' : firstIssueMessage(r.error)).toBe(
+      'assume_role must be a string, number or boolean'
+    )
+  })
+
   it('refuses keys that are not lowercase identifiers', () => {
     for (const key of ['ACCESS_KEY', 'Bucket', '1bucket', 'bad-key', '']) {
       expect(parse({ [key]: 'x' }).success).toBe(false)

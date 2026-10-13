@@ -85,6 +85,12 @@ describe('PUT /api/ui/environments/:id/backend', () => {
     expect(expr.message).toMatch(/:2:/)
     const nested = await statusOf(put(owner, { hcl: 'assume_role = { role_arn = "x" }\n' }))
     expect(nested.status).toBe(400)
+    expect(nested.message).toContain('assume_role')
+    const block = await statusOf(
+      put(owner, { hcl: 'bucket = "b"\nassume_role {\n  role_arn = "x"\n}\n' })
+    )
+    expect(block.status).toBe(400)
+    expect(block.message).toMatch(/:2:/)
   })
 
   it('refuses an editor with 403', async () => {

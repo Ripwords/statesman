@@ -54,5 +54,10 @@ export function firstIssueMessage(error: z.ZodError): string {
   const issue = error.issues[0]
   if (!issue) return 'Invalid backend settings'
   // A refused key reports through its path; the message already names it.
+  // A value of the wrong type is a failed union with only a generic message.
+  const key = issue.path.at(-1)
+  if (issue.code === 'invalid_union' && typeof key === 'string') {
+    return `${key} must be a string, number or boolean`
+  }
   return issue.message
 }
