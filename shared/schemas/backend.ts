@@ -3,8 +3,21 @@ import type { JsonValue } from './variable'
 
 export const MAX_BACKEND_KEYS = 32
 
-const CREDENTIAL_KEYS = new Set(['access_key', 'secret_key', 'token', 'password'])
-const CREDENTIAL_SUFFIXES = ['_secret', '_token', '_password']
+const CREDENTIAL_KEYS = new Set([
+  'access_key',
+  'secret_key',
+  'token',
+  'password',
+  'credentials', // gcs: service account JSON
+  'encryption_key', // gcs
+  'sse_customer_key', // s3
+  'client_key', // kubernetes
+  'conn_str', // pg: the connection string embeds the password
+  'http_auth', // consul: user:pass
+  'secret_id' // cos
+])
+// `key` (the s3 state key), `kms_key_id` and `workspace_key_prefix` do not end in `_key`.
+const CREDENTIAL_SUFFIXES = ['_secret', '_token', '_password', '_key']
 
 /**
  * Backend settings are stored and shown in plaintext (checkout spec §3), so a

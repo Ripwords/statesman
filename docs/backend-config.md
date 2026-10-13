@@ -72,7 +72,13 @@ its checkout files. A project on `s3`, or any other backend, can store that
 backend's settings (bucket, region, key and so on) on each environment, and
 `statesman pull` writes them to a backend config file that `terraform init`
 reads through `-backend-config`. Settings are flat and unencrypted, and
-credential-like names are refused. See [the CLI reference](cli.md).
+credential-like names are refused: `access_key`, `secret_key`, `token`,
+`password`, `credentials`, `encryption_key`, `sse_customer_key`, `client_key`,
+`conn_str`, `http_auth`, `secret_id`, and any name ending in `_secret`,
+`_token`, `_password` or `_key`. `key`, `kms_key_id` and `workspace_key_prefix`
+are allowed. Settings stored before a name was refused are still written by
+`statesman pull`; saving the environment's settings again refuses them. See
+[the CLI reference](cli.md).
 
 ---
 

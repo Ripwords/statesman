@@ -21,7 +21,17 @@ describe('backendSettingsSchema', () => {
     'password',
     'client_secret',
     'sas_token',
-    'db_password'
+    'db_password',
+    'access_token',
+    'client_certificate_password',
+    'credentials',
+    'encryption_key',
+    'sse_customer_key',
+    'client_key',
+    'conn_str',
+    'http_auth',
+    'secret_id',
+    'some_future_key'
   ])('refuses credential-like key %s and names it', (key) => {
     const r = parse({ [key]: 'x' })
     expect(r.success).toBe(false)
@@ -61,7 +71,16 @@ describe('backendSettingsSchema', () => {
   })
 
   it('isCredentialKey does not flag ordinary keys', () => {
-    for (const key of ['bucket', 'kms_key_id', 'token_endpoint', 'use_lockfile']) {
+    for (const key of [
+      'bucket',
+      'key',
+      'kms_key_id',
+      'workspace_key_prefix',
+      'client_certificate',
+      'client_certificate_path',
+      'token_endpoint',
+      'use_lockfile'
+    ]) {
       expect(isCredentialKey(key)).toBe(false)
     }
   })

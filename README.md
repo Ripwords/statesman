@@ -172,8 +172,10 @@ backend settings** (**Edit** once there are some) opens a box where you paste a
 backend config file, one `name = value` per line. Owners and admins can edit
 them; everyone with a role on the project can read them. The values are
 **not encrypted** and are shown in full, so names that look like credentials
-(`access_key`, `secret_key`, `token`, `password`, or ending in `_secret`,
-`_token` or `_password`) are refused. Credentials stay in your provider's own
+(`access_key`, `secret_key`, `token`, `password`, `credentials`,
+`encryption_key`, `sse_customer_key`, `client_key`, `conn_str`, `http_auth`,
+`secret_id`, or ending in `_secret`, `_token`, `_password` or `_key`) are
+refused. `key`, `kms_key_id` and `workspace_key_prefix` are allowed. Credentials stay in your provider's own
 chain, or in `TF_HTTP_PASSWORD` for statesman's backend. Only flat settings are
 supported; a nested block such as `assume_role { ... }` stays in your committed
 `backend` block.
