@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { toTfvars } from '../../server/hcl/tfvars'
+import { toTfvars } from '../../shared/hcl/tfvars'
 import type { JsonValue } from '../../shared/schemas/variable'
 
 const run = promisify(execFile)

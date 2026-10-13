@@ -3,7 +3,7 @@ import { resolveProject } from '../../../../utils/tf-handler'
 import { findEnvironment, readDeliveryValues } from '../../../../services/variables'
 import { recordAuditBestEffort } from '../../../../services/audit'
 import { environmentRefSchema } from '../../../../../shared/schemas/project'
-import { toTfvars } from '../../../../hcl/tfvars'
+import { toTfvars } from '../../../../../shared/hcl/tfvars'
 
 const FORMATS = ['json', 'tfvars'] as const
 type Format = (typeof FORMATS)[number]

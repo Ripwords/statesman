@@ -1,4 +1,4 @@
-import type { JsonValue } from '../../shared/schemas/variable'
+import type { JsonValue } from '../schemas/variable'
 
 const INDENT = '  '
 

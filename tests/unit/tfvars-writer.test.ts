@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHclToolkit, type HclToolkit } from '../../server/hcl/toolkit'
-import { toTfvars } from '../../server/hcl/tfvars'
+import { toTfvars } from '../../shared/hcl/tfvars'
 import type { JsonValue } from '../../shared/schemas/variable'
 
 let hcl: HclToolkit

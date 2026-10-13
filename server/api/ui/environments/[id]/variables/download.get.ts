@@ -6,7 +6,7 @@ import {
 } from '../../../../../utils/project-access'
 import { environmentContext, readDeliveryValues } from '../../../../../services/variables'
 import { recordAuditBestEffort } from '../../../../../services/audit'
-import { toTfvars } from '../../../../../hcl/tfvars'
+import { toTfvars } from '../../../../../../shared/hcl/tfvars'
 
 const paramsSchema = z.object({ id: z.string().min(1).max(64) })
 
