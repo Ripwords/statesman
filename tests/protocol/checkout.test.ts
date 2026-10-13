@@ -72,8 +72,10 @@ describe('GET /api/checkout/:org/:project/:environment', () => {
     expect((await get(path, tokens.elsewhere)).status).toBe(403)
   })
   it('returns variables and backend settings, uncached, with one audit row', async () => {
-    const before = (await db().select().from(auditLog).where(eq(auditLog.action, 'checkout.read')))
-      .length
+    // The test database is shared with other suites that also read checkouts,
+    // and select order is unspecified: find this request's row by id.
+    const readRows = () => db().select().from(auditLog).where(eq(auditLog.action, 'checkout.read'))
+    const before = new Set((await readRows()).map((r) => r.id))
     const response = await get(path, tokens.vars)
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
@@ -81,9 +83,9 @@ describe('GET /api/checkout/:org/:project/:environment', () => {
       variables: { db_password: 'hunter2' },
       backend: { bucket: 'b', encrypt: true }
     })
-    const rows = await db().select().from(auditLog).where(eq(auditLog.action, 'checkout.read'))
-    expect(rows.length).toBe(before + 1)
-    expect(rows.at(-1)?.metaJson).toEqual({ environment: 'client', count: 1 })
+    const added = (await readRows()).filter((r) => !before.has(r.id))
+    expect(added).toHaveLength(1)
+    expect(added[0]?.metaJson).toEqual({ environment: 'client', count: 1 })
   })
   it('returns backend null for an environment without settings', async () => {
     const response = await get(`/api/checkout/${ORG}/prod/internal`, tokens.vars)
