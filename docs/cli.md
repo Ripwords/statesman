@@ -70,16 +70,16 @@ exits 2. The text below is the `<reason>`.
 | Cause | Message |
 |---|---|
 | File is not JSON | `statesman.json: not valid JSON` (no field) |
-| `server` is not an http(s) URL | Zod's URL message for `server` |
+| `server` is not an http(s) URL | `server: Invalid URL` |
 | `project` is not `org/project` | `must be org/project` |
-| `environments` is empty | Zod's minimum-length message for `environments` |
+| `environments` is empty | `environments: Too small: expected array to have >=1 items` |
 | An environment appears twice | `must not repeat an environment` |
 | A file pattern has a `/`, a space or any character other than letters, digits, `.`, `_`, `-` and `{env}` | `must be a file name in this directory: letters, digits, . _ - and {env}` |
 | A file pattern is `.` or `..` | `must be a file name in this directory` |
 | `files.vars` does not end in `.tfvars` or `.tfvars.json` | `must end in .tfvars or .tfvars.json` |
 | Two or more environments, and `files.vars` is `terraform.tfvars`, `terraform.tfvars.json`, or ends in `.auto.tfvars` or `.auto.tfvars.json` | `files.vars: "<name>" is loaded by Terraform for every environment, so one environment's values would leak into another's runs` |
 | Two or more environments, and a pattern has no `{env}` | `files.<kind>: "<pattern>" has no {env}, so every environment would write the same file` |
-| An unknown field | Zod's unrecognized-key message |
+| An unknown field | `Unrecognized key: "x"`, or `files: Unrecognized key: "x"` under `files` |
 
 A manifest with one environment may use `terraform.tfvars` and patterns with no
 `{env}`. Only the first problem found is reported.
@@ -116,21 +116,27 @@ Fetches each environment, compares it with the files on disk, and prints one
 line per file. It writes nothing.
 
 ```
-client    client.tfvars        differs: openai_api_key, db_instance_class
-client    backend.client.hcl   ok
-client    .env.client          ok
-internal  internal.tfvars      missing
-internal  backend.internal.hcl missing
-internal  .env.internal        missing
-          .env.staging         stray: environment "staging" not in statesman.json
+internal  internal.tfvars       unreadable: internal.tfvars:1: expressions are not allowed in a variables file (found function_call)
+internal  backend.internal.hcl  no backend settings in statesman
+internal  .env.internal         missing
+client    client.tfvars         differs: openai_api_key, +zeta, -extra
+client    backend.client.hcl    missing
+client    .env.client           missing
+          .env.staging          stray: environment "staging" not in statesman.json
 ```
+
+Rows follow the manifest's `environments` order, then the files of each
+environment (vars, backend, `.env`), then strays. The first column is as wide as
+the longest environment name and the second as wide as the longest file name,
+each followed by two spaces. In a `differs` list the names that differ come
+first, then `+name`, then `-name`, each group sorted by name.
 
 | State | Meaning | Counts as drift |
 |---|---|---|
 | `ok` | The file matches | no |
 | `missing` | The file does not exist | yes |
 | `differs: <names>` | The file exists and differs | yes |
-| `unreadable: <file>:<line>: <reason>` | The file does not parse, or holds an expression instead of a literal | yes |
+| `unreadable: <file>:<line>: <reason>` | The file does not parse, or holds an expression such as `x = foo()` instead of a literal | yes |
 | `stray: environment "<slug>" not in statesman.json` | The file name matches a pattern for an environment the manifest does not list | yes |
 | `no backend settings in statesman` | `files.backend` is set but this environment has none. No file is expected | no |
 
@@ -156,6 +162,10 @@ Does the same comparison, then writes:
 - A file that matches is left alone.
 - A file that differs is refused, and its differing names are printed, unless
   you pass `--force`. `--force` applies to every file, `.env` files included.
+- A local file that statesman cannot parse (for example `x = foo()`, which holds
+  an expression) counts as differing. Without `--force` it is refused as
+  `refused, differs: <file>:<line>: <reason> (use --force after checking)`. With
+  `--force` it is overwritten, and the line reads `updated: <file>:<line>: <reason>`.
 
 `pull` writes every file it can, then exits 1 if any file was refused. One
 changed file does not block the others. Output uses the same lines as `status`,
@@ -243,11 +253,21 @@ terraform init && terraform plan
 
 ## In CI
 
-Store a token with **Read Variables** as the secret `STATESMAN_TOKEN`. Copy the
-whole `cli/dist/` directory into the job, or build it there with `pnpm
-build:cli`.
+Store a token with **Read Variables** as the secret `STATESMAN_TOKEN`.
+
+The CLI is built in a statesman checkout (`pnpm build:cli`), not in the
+Terraform repository. Copy the whole `cli/dist/` directory (`statesman.mjs` and
+both `.wasm` files) into the Terraform repository, for example under
+`tools/statesman/` and commit it, or fetch it in the job as a build artifact.
+`tools/statesman/` is only the example location used below: any directory works
+if the `.wasm` files stay beside `statesman.mjs`. The job needs Node 24 or newer
+(the repository's `engines` floor is 24.11.0).
 
 ```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: 24
+
 - name: Check out the Terraform files
   env:
     STATESMAN_TOKEN: ${{ secrets.STATESMAN_TOKEN }}
@@ -266,10 +286,12 @@ To fail a job when a checkout has drifted, without writing anything:
 - name: Gate on drift
   env:
     STATESMAN_TOKEN: ${{ secrets.STATESMAN_TOKEN }}
-  run: node tools/statesman/statesman.mjs status --json
+  run: node tools/statesman/statesman.mjs status --json --env client
 ```
 
-The step fails on exit 1 (drift) and on exit 2 (could not check). On a fresh CI
+`status` covers every environment in `statesman.json` unless you pass `--env`,
+so the gate above checks only `client`, the environment the pull step wrote. The
+step fails on exit 1 (drift) and on exit 2 (could not check). On a fresh CI
 runner every file is missing, so use `pull` there and `status` where files
 already exist.
 
@@ -286,11 +308,11 @@ unless noted.
 | `statesman.json: ...` | See [Refusals](#refusals) |
 | `environment "<slug>" is not in statesman.json (<list>)` | Use an environment from the list, or add it to the manifest |
 | `set STATESMAN_TOKEN to a token with Read Variables for <org/project>` | Export the token |
-| `server in statesman.json must be an http(s) URL` / `... without credentials` | Fix `server`. Put no `user:password@` in it |
+| `server in statesman.json must be an http(s) URL without credentials` | Fix `server`. Put no `user:password@` in it |
 | `STATESMAN_URL must be an http(s) URL` / `... without credentials` | Fix or unset `STATESMAN_URL` |
 | `could not reach statesman at <origin>` | Check the address, the network and that the server is up. Requests time out after 30 seconds |
 | `statesman rejected STATESMAN_TOKEN (expired, revoked or mistyped)` | Mint a new token on the Tokens page |
-| `this token cannot read variables of <org/project>` | The token lacks **Read Variables**, is scoped to other projects, or its creator is no longer a project owner |
+| `this token cannot read variables of <org/project>` | Every 403 prints this one message. The token lacks **Read Variables** or is scoped to other projects, or its creator has lost access: a project-scoped token needs a creator who is still an owner of the project, and an all-projects token needs a creator who is a deployment admin |
 | `environment "<slug>" does not exist in <org/project>; create it on the Variables tab` | Create the environment, or fix the manifest |
 | `statesman answered <status> for <org/project>/<slug>` | A 5xx or other unexpected status. Retry, then check the server's logs |
 | `statesman sent an unexpected response for <org/project>/<slug>` | The server and CLI versions disagree. Rebuild the CLI from the same revision |
@@ -299,7 +321,7 @@ unless noted.
 | `git check-ignore failed (exit <code>)` / `git ls-files failed (exit <code>)` | As above |
 | `<file>: cannot read (<code>)` | A file exists but cannot be read, for example a permission error (`EACCES`) |
 | `<file>: cannot write (<code>)` | The file or directory is not writable |
-| `unknown command <name>` followed by the usage | Use `status`, `pull` or `help` |
+| `unknown command <name>` (`unknown command (none)` when no command is given), followed by the usage | Use `status`, `pull` or `help` |
 | An unknown flag or a missing flag value, followed by the usage | Check the flags above |
 | `statesman: unexpected <ErrorName>` | A bug in the CLI. The message holds only the error's type, so no value leaks. Report it |
 
