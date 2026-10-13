@@ -32,13 +32,39 @@ export const manifestSchema = z
           (n) => n.endsWith('.tfvars') || n.endsWith('.tfvars.json'),
           'must end in .tfvars or .tfvars.json'
         ),
-        backend: fileName.optional(),
+        backend: fileName
+          .refine(
+            (n) => !n.endsWith('.json'),
+            'must not end in .json: pull writes the backend file as HCL'
+          )
+          .optional(),
         env: fileName.optional()
       })
       .strict()
   })
   .strict()
   .superRefine((m, ctx) => {
+    // Each written file must belong to exactly one kind, and never be the manifest.
+    const owner = new Map<string, FileKind>()
+    for (const kind of ['vars', 'backend', 'env'] as const) {
+      const pattern = m.files[kind]
+      if (pattern === undefined) continue
+      for (const env of m.environments) {
+        const file = fileFor(pattern, env)
+        const other = owner.get(file)
+        const message =
+          file === 'statesman.json'
+            ? `"${pattern}" would overwrite statesman.json`
+            : other !== undefined && other !== kind
+              ? `"${pattern}" writes the same file as files.${other}`
+              : undefined
+        if (message !== undefined) {
+          ctx.addIssue({ code: 'custom', path: ['files', kind], message })
+          return
+        }
+        owner.set(file, kind)
+      }
+    }
     if (m.environments.length < 2) return
     if (AUTO_LOADED.test(m.files.vars)) {
       ctx.addIssue({

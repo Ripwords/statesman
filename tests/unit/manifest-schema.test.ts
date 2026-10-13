@@ -63,6 +63,43 @@ describe('parseManifest', () => {
     expect(error({ extra: true })).toContain('statesman.json')
   })
 
+  it.each(['backend.{env}.json', 'backend.{env}.tf.json'])(
+    'refuses a backend pattern ending in .json (%s): pull writes HCL',
+    (backend) => {
+      expect(error({ files: { vars: '{env}.tfvars', backend } })).toMatch(
+        /^statesman\.json: files\.backend: .*\.json/
+      )
+    }
+  )
+
+  it.each([
+    [{ vars: '{env}.tfvars', backend: '{env}.tfvars' }, 'files.backend'],
+    [{ vars: '{env}.tfvars', env: '{env}.tfvars' }, 'files.env'],
+    [{ vars: '{env}.tfvars', backend: '.env.{env}', env: '.env.{env}' }, 'files.env']
+  ])('refuses two kinds that write the same file %j', (files, field) => {
+    expect(error({ files })).toMatch(
+      new RegExp(`^statesman\\.json: ${field.replace('.', '\\.')}: .*same file`)
+    )
+  })
+
+  it('refuses two kinds that write the same file with one environment', () => {
+    expect(
+      error({
+        environments: ['prod'],
+        files: { vars: 'terraform.tfvars', env: 'terraform.tfvars' }
+      })
+    ).toMatch(/^statesman\.json: files\.env: .*same file/)
+  })
+
+  it('refuses a pattern that resolves to statesman.json', () => {
+    expect(
+      error({ environments: ['prod'], files: { vars: 'prod.tfvars', env: 'statesman.json' } })
+    ).toMatch(/^statesman\.json: files\.env: .*statesman\.json/)
+    expect(
+      error({ environments: ['statesman'], files: { vars: 'x.tfvars', env: '{env}.json' } })
+    ).toMatch(/^statesman\.json: files\.env: .*statesman\.json/)
+  })
+
   it('refuses a non-http server', () => {
     expect(error({ server: 'ftp://x' })).toContain('server')
   })

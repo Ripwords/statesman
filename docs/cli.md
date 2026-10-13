@@ -77,6 +77,9 @@ exits 2. The text below is the `<reason>`.
 | A file pattern has a `/`, a space or any character other than letters, digits, `.`, `_`, `-` and `{env}` | `must be a file name in this directory: letters, digits, . _ - and {env}` |
 | A file pattern is `.` or `..` | `must be a file name in this directory` |
 | `files.vars` does not end in `.tfvars` or `.tfvars.json` | `must end in .tfvars or .tfvars.json` |
+| `files.backend` ends in `.json` (the CLI writes it as HCL) | `files.backend: must not end in .json: pull writes the backend file as HCL` |
+| Two of `files.vars`, `files.backend` and `files.env` name the same file for some environment | `files.<kind>: "<pattern>" writes the same file as files.<other>` |
+| A pattern names `statesman.json` for some environment | `files.<kind>: "<pattern>" would overwrite statesman.json` |
 | Two or more environments, and `files.vars` is `terraform.tfvars`, `terraform.tfvars.json`, or ends in `.auto.tfvars` or `.auto.tfvars.json` | `files.vars: "<name>" is loaded by Terraform for every environment, so one environment's values would leak into another's runs` |
 | Two or more environments, and a pattern has no `{env}` | `files.<kind>: "<pattern>" has no {env}, so every environment would write the same file` |
 | An unknown field | `Unrecognized key: "x"`, or `files: Unrecognized key: "x"` under `files` |
