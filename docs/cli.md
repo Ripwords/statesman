@@ -156,6 +156,11 @@ How files are compared:
 - `.env` files are compared on the keys the CLI owns. Other lines never make a
   file differ.
 - A stray is never touched. Files that git tracks are never reported as stray.
+- Any untracked file whose name fits a pattern counts, even one that is not a
+  checkout file. With `{env}.tfvars` and `.env.{env}`, a local
+  `terraform.tfvars` reads as environment `terraform` and `.env.local` as
+  environment `local`. Both are reported as stray and make `status` and `pull`
+  exit 1. Rename the file, delete it, or commit it if it holds nothing secret.
 
 ### `pull`
 
